@@ -4,8 +4,6 @@ defmodule Me.Accounts.User.Senders.SendNewUserConfirmationEmail do
   """
 
   use AshAuthentication.Sender
-  use MeWeb, :verified_routes
-
   import Swoosh.Email
 
   alias Me.Mailer
@@ -34,7 +32,7 @@ defmodule Me.Accounts.User.Senders.SendNewUserConfirmationEmail do
   end
 
   defp body(token, opts) do
-    url = url(~p"/confirm_new_user/#{token}")
+    url = MeWeb.Endpoint.url() <> "/confirm_new_user/" <> URI.encode(token)
 
     case opts[:confirmation_type] do
       :identity_link ->

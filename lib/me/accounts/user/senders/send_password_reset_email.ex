@@ -4,8 +4,6 @@ defmodule Me.Accounts.User.Senders.SendPasswordResetEmail do
   """
 
   use AshAuthentication.Sender
-  use MeWeb, :verified_routes
-
   import Swoosh.Email
 
   alias Me.Mailer
@@ -22,7 +20,7 @@ defmodule Me.Accounts.User.Senders.SendPasswordResetEmail do
   end
 
   defp body(params) do
-    url = url(~p"/password-reset/#{params[:token]}")
+    url = MeWeb.Endpoint.url() <> "/password-reset/" <> URI.encode(params[:token])
 
     """
     <p>Click this link to reset your password:</p>

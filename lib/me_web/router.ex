@@ -1,6 +1,8 @@
 defmodule MeWeb.Router do
   use MeWeb, :router
 
+  import MeWeb.AuthPlug
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
@@ -12,6 +14,13 @@ defmodule MeWeb.Router do
 
   pipeline :api do
     plug :accepts, ["json"]
+    plug :load_from_bearer
+  end
+
+  scope "/api" do
+    pipe_through :api
+
+    forward "/json", MeWeb.JsonApiRouter
   end
 
   scope "/", MeWeb do

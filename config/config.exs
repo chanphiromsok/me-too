@@ -7,6 +7,10 @@
 # General application configuration
 import Config
 
+config :mime,
+  extensions: %{"json" => "application/vnd.api+json"},
+  types: %{"application/vnd.api+json" => ["json"]}
+
 config :spark,
   formatter: ["Ash.Resource": [section_order: [:authentication, :token, :user_identity]]]
 

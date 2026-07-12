@@ -43,6 +43,8 @@ defmodule Me.MixProject do
       {:bcrypt_elixir, "~> 3.0"},
       {:picosat_elixir, "~> 0.2"},
       {:ash_authentication, "~> 4.0"},
+      {:ash_json_api, "~> 1.7"},
+      {:open_api_spex, "~> 3.16"},
       {:igniter, "~> 0.6", only: [:dev, :test]},
       {:phoenix, "~> 1.8.9"},
       {:phoenix_ecto, "~> 4.5"},

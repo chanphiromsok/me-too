@@ -3,10 +3,14 @@ defmodule Me.Accounts.User do
     otp_app: :me,
     domain: Me.Accounts,
     authorizers: [Ash.Policy.Authorizer],
-    extensions: [AshAuthentication]
+    extensions: [AshAuthentication, AshJsonApi.Resource]
 
   policies do
     bypass(AshAuthentication.Checks.AshAuthenticationInteraction) do
+      authorize_if(always())
+    end
+
+    policy action([:register_with_password, :sign_in_with_password]) do
       authorize_if(always())
     end
   end
@@ -51,6 +55,10 @@ defmodule Me.Accounts.User do
 
       remember_me :remember_me
     end
+  end
+
+  json_api do
+    type("user")
   end
 
   attributes do
