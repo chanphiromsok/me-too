@@ -2,8 +2,14 @@ defmodule Me.Accounts.Token do
   use Ash.Resource,
     otp_app: :me,
     domain: Me.Accounts,
+    data_layer: AshPostgres.DataLayer,
     authorizers: [Ash.Policy.Authorizer],
     extensions: [AshAuthentication.TokenResource]
+
+  postgres do
+    table("tokens")
+    repo(Me.Repo)
+  end
 
   policies do
     bypass(AshAuthentication.Checks.AshAuthenticationInteraction) do
