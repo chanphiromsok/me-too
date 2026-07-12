@@ -1,4 +1,6 @@
 import Config
+config :me, token_signing_secret: "NDnuWWPtrG4w+tQW2DcInnZYsM1LQC9F"
+config :bcrypt_elixir, log_rounds: 1
 
 # Configure your database
 #

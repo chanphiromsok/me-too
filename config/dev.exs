@@ -53,7 +53,7 @@ config :me, MeWeb.Endpoint,
 # different ports.
 
 # Enable dev routes for dashboard and mailbox
-config :me, dev_routes: true
+config :me, dev_routes: true, token_signing_secret: "2hri/bcl5kLgurw2UIy+07qL8JBwBuAv"
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"

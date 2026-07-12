@@ -15,7 +15,8 @@ defmodule Me.Application do
       # Start a worker by calling: Me.Worker.start_link(arg)
       # {Me.Worker, arg},
       # Start to serve requests, typically the last entry
-      MeWeb.Endpoint
+      MeWeb.Endpoint,
+      {AshAuthentication.Supervisor, [otp_app: :me]}
     ]
 
     # See https://elixir.hexdocs.pm/Supervisor.html

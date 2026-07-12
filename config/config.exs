@@ -7,9 +7,13 @@
 # General application configuration
 import Config
 
+config :spark,
+  formatter: ["Ash.Resource": [section_order: [:authentication, :token, :user_identity]]]
+
 config :me,
   ecto_repos: [Me.Repo],
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  ash_domains: [Me.Accounts]
 
 # Configure the endpoint
 config :me, MeWeb.Endpoint,
