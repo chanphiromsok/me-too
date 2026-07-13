@@ -23,6 +23,12 @@ defmodule Me.Inventory.StockMovement do
       filter expr(product_variant_id == ^arg(:product_variant_id))
     end
 
+    read :api_for_variant do
+      argument :product_variant_id, :uuid, allow_nil?: false
+      filter expr(product_variant_id == ^arg(:product_variant_id))
+      pagination offset?: true, keyset?: true, default_limit: 25, max_page_size: 100
+    end
+
     create :apply do
       public? false
 

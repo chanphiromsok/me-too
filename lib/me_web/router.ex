@@ -16,6 +16,7 @@ defmodule MeWeb.Router do
     plug :accepts, ["json"]
     plug :load_from_bearer
     plug MeWeb.ApiActorPlug
+    plug MeWeb.ApiPaginationPlug, max_page_size: 100
   end
 
   scope "/api" do
@@ -31,7 +32,7 @@ defmodule MeWeb.Router do
   scope "/api" do
     pipe_through :api
 
-    forward "/", MeWeb.JsonApiRouter
+    forward "/", MeWeb.AshJsonApiRouter
   end
 
   scope "/", MeWeb do

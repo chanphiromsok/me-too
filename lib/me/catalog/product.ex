@@ -18,6 +18,10 @@ defmodule Me.Catalog.Product do
   actions do
     defaults [:read]
 
+    read :api_index do
+      pagination offset?: true, keyset?: true, default_limit: 25, max_page_size: 100
+    end
+
     create :create do
       primary? true
       accept [:name, :description, :category]

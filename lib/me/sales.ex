@@ -8,7 +8,7 @@ defmodule Me.Sales do
 
     routes do
       base_route "/orders", Me.Sales.Order do
-        index :read
+        index :api_index
         get :read
         post :create
         patch :submit, route: "/:id/submit"

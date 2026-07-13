@@ -8,7 +8,7 @@ defmodule Me.Catalog do
 
     routes do
       base_route "/products", Me.Catalog.Product do
-        index :read
+        index :api_index
         get :read
         post :create
         patch :update
@@ -16,7 +16,7 @@ defmodule Me.Catalog do
       end
 
       base_route "/product-variants", Me.Catalog.ProductVariant do
-        index :read
+        index :api_index
         get :read
         post :create
         patch :update

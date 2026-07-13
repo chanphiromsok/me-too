@@ -9,7 +9,7 @@ defmodule Me.Inventory do
         post :restock, route: "/:product_variant_id/restock"
         post :adjust, route: "/:product_variant_id/adjust"
 
-        index :for_variant,
+        index :api_for_variant,
           route: "/:product_variant_id/stock-movements"
       end
     end

@@ -8,6 +8,22 @@ defmodule Me.Sales.Order do
 
   json_api do
     type "order"
+    includes [:payments, line_items: [:product_variant]]
+
+    default_fields [
+      :order_number,
+      :status,
+      :subtotal_cents,
+      :discount_cents,
+      :total_cents,
+      :payment_state,
+      :placed_at,
+      :fulfilled_at,
+      :cancelled_at,
+      :cancel_reason,
+      :inserted_at,
+      :updated_at
+    ]
   end
 
   postgres do
@@ -40,6 +56,10 @@ defmodule Me.Sales.Order do
 
   actions do
     defaults [:read]
+
+    read :api_index do
+      pagination offset?: true, keyset?: true, default_limit: 25, max_page_size: 100
+    end
 
     create :create do
       primary? true
