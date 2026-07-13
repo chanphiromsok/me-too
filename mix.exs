@@ -11,7 +11,9 @@ defmodule Me.MixProject do
       aliases: aliases(),
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      consolidate_protocols: Mix.env() != :dev,
+      usage_rules: usage_rules()
     ]
   end
 
@@ -35,17 +37,38 @@ defmodule Me.MixProject do
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib"]
 
+  defp usage_rules do
+    [
+      file: "AGENTS.md",
+      usage_rules: [
+        "usage_rules:elixir",
+        "usage_rules:otp",
+        "phoenix:elixir",
+        "phoenix:phoenix",
+        "phoenix:ecto",
+        "phoenix:html",
+        "phoenix:liveview",
+        :ash,
+        ~r/^ash_/
+      ]
+    ]
+  end
+
   # Specifies your project dependencies.
   #
   # Type `mix help deps` for examples and options.
   defp deps do
     [
+      {:usage_rules, "~> 1.0", only: [:dev]},
+      {:sourceror, "~> 1.8", only: [:dev, :test]},
+      {:ash_state_machine, "~> 0.2"},
+      {:ash, "~> 3.0"},
       {:bcrypt_elixir, "~> 3.0"},
       {:picosat_elixir, "~> 0.2"},
       {:ash_authentication, "~> 4.0"},
       {:ash_postgres, "~> 2.0"},
-      {:ash_json_api, "~> 1.7"},
-      {:open_api_spex, "~> 3.16"},
+      {:ash_json_api, "~> 1.0"},
+      {:open_api_spex, "~> 3.0"},
       {:igniter, "~> 0.6", only: [:dev, :test]},
       {:phoenix, "~> 1.8.9"},
       {:phoenix_ecto, "~> 4.5"},
@@ -91,10 +114,10 @@ defmodule Me.MixProject do
   # See the documentation for `Mix` for more info on aliases.
   defp aliases do
     [
-      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
+      setup: ["deps.get", "ash.setup", "assets.setup", "assets.build", "run priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      test: ["ash.setup --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind me", "esbuild me"],
       "assets.deploy": [
