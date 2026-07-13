@@ -1,16 +1,16 @@
 defmodule MeWeb.JsonApiRouterTest do
   use MeWeb.ConnCase, async: true
 
-  alias Me.Accounts.User
+  alias Me.Accounts.{Customer, User}
 
   test "serves the OpenAPI document", %{conn: conn} do
-    conn = get(conn, "/api/json/open-api")
+    conn = get(conn, "/api/open-api")
 
     assert response(conn, 200) |> Jason.decode!() |> Map.fetch!("openapi")
   end
 
   test "serves the JSON schema", %{conn: conn} do
-    conn = get(conn, "/api/json/json-schema")
+    conn = get(conn, "/api/json-schema")
 
     assert json_response(conn, 200)["$schema"]
   end
@@ -28,7 +28,7 @@ defmodule MeWeb.JsonApiRouterTest do
       conn
       |> put_req_header("content-type", "application/vnd.api+json")
       |> post(
-        "/api/json/customers/register",
+        "/api/customers/register",
         Jason.encode!(%{
           data: %{
             type: "customer",
@@ -56,7 +56,7 @@ defmodule MeWeb.JsonApiRouterTest do
       |> put_req_header("authorization", "Bearer #{admin.__metadata__.token}")
       |> put_req_header("content-type", "application/vnd.api+json")
       |> patch(
-        "/api/json/customers/#{body["data"]["id"]}/confirm",
+        "/api/customers/#{body["data"]["id"]}/confirm",
         Jason.encode!(%{
           data: %{
             id: body["data"]["id"],
@@ -71,9 +71,32 @@ defmodule MeWeb.JsonApiRouterTest do
   end
 
   test "OpenAPI exposes the admin customer confirmation route", %{conn: conn} do
-    document = conn |> get("/api/json/open-api") |> response(200) |> Jason.decode!()
+    document = conn |> get("/api/open-api") |> response(200) |> Jason.decode!()
 
-    assert document["paths"]["/api/json/customers/{id}/confirm"]["patch"]
+    assert document["paths"]["/api/customers/{id}/confirm"]["patch"]
+    assert document["paths"]["/api/staff/sign-in"]["post"]
+    assert document["paths"]["/api/customers/sign-in"]["post"]
+    assert document["paths"]["/api/customers/register"]["post"]
+  end
+
+  test "staff and customer sign-in use separate paths" do
+    staff = create_admin!()
+    customer = create_confirmed_customer!()
+
+    staff_response =
+      post_json_api("/api/staff/sign-in", "user", %{
+        email: to_string(staff.email),
+        password: "password123"
+      })
+
+    customer_response =
+      post_json_api("/api/customers/sign-in", "customer", %{
+        email: to_string(customer.email),
+        password: "password123"
+      })
+
+    assert is_binary(staff_response["meta"]["token"])
+    assert is_binary(customer_response["meta"]["token"])
   end
 
   defp create_admin! do
@@ -89,5 +112,26 @@ defmodule MeWeb.JsonApiRouterTest do
       action: :register_with_password,
       authorize?: false
     )
+  end
+
+  defp create_confirmed_customer! do
+    Customer
+    |> Ash.create!(
+      %{
+        name: "API Test Customer",
+        email: "customer-#{System.unique_integer([:positive])}@example.com",
+        password: "password123",
+        password_confirmation: "password123"
+      },
+      action: :register
+    )
+    |> Ash.update!(%{}, action: :confirm, authorize?: false)
+  end
+
+  defp post_json_api(path, type, attributes) do
+    build_conn()
+    |> put_req_header("content-type", "application/vnd.api+json")
+    |> post(path, Jason.encode!(%{data: %{type: type, attributes: attributes}}))
+    |> json_response(201)
   end
 end

@@ -15,29 +15,29 @@ defmodule MeWeb.Router do
   pipeline :api do
     plug :accepts, ["json"]
     plug :load_from_bearer
-    plug :set_actor, :user
-  end
-
-  scope "/api" do
-    pipe_through :api
-
-    forward "/json", MeWeb.JsonApiRouter
-  end
-
-  scope "/", MeWeb do
-    pipe_through :browser
-
-    get "/", PageController, :home
+    plug MeWeb.ApiActorPlug
   end
 
   scope "/api" do
     pipe_through :browser
 
     forward "/swaggerui", OpenApiSpex.Plug.SwaggerUI,
-      path: "/api/json/open-api",
+      path: "/api/open-api",
       default_model_expand_depth: 4,
       display_operation_id: true,
       persist_authorization: true
+  end
+
+  scope "/api" do
+    pipe_through :api
+
+    forward "/", MeWeb.JsonApiRouter
+  end
+
+  scope "/", MeWeb do
+    pipe_through :browser
+
+    get "/", PageController, :home
   end
 
   # Other scopes may use custom stacks.

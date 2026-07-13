@@ -3,5 +3,5 @@ defmodule MeWeb.JsonApiRouter do
     domains: [Me.Accounts],
     open_api: "/open-api",
     json_schema: "/json-schema",
-    prefix: "/api/json"
+    prefix: "/api"
 end

@@ -22,6 +22,7 @@ defmodule Me.Accounts.User do
       description "Get a user by the subject claim in a JWT"
       argument :subject, :string, allow_nil?: false
       get? true
+      filter expr(active == true)
       prepare AshAuthentication.Preparations.FilterBySubject
     end
 

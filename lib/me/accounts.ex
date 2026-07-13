@@ -5,7 +5,7 @@ defmodule Me.Accounts do
 
   json_api do
     routes do
-      base_route "/users", Me.Accounts.User do
+      base_route "/staff", Me.Accounts.User do
         post :sign_in_with_password,
           route: "/sign-in",
           metadata: fn _subject, user, _request ->
