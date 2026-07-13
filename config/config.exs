@@ -64,7 +64,7 @@ config :spark,
 config :me,
   ecto_repos: [Me.Repo],
   generators: [timestamp_type: :utc_datetime],
-  ash_domains: [Me.Accounts]
+  ash_domains: [Me.Accounts, Me.Catalog]
 
 # Configure the endpoint
 config :me, MeWeb.Endpoint,
