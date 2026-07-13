@@ -29,6 +29,16 @@ defmodule MeWeb.Router do
     get "/", PageController, :home
   end
 
+  scope "/api" do
+    pipe_through :browser
+
+    forward "/swaggerui", OpenApiSpex.Plug.SwaggerUI,
+      path: "/api/json/open-api",
+      default_model_expand_depth: 4,
+      display_operation_id: true,
+      persist_authorization: true
+  end
+
   # Other scopes may use custom stacks.
   # scope "/api", MeWeb do
   #   pipe_through :api

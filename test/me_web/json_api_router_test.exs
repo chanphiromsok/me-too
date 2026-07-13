@@ -12,4 +12,10 @@ defmodule MeWeb.JsonApiRouterTest do
 
     assert json_response(conn, 200)["$schema"]
   end
+
+  test "serves Swagger UI", %{conn: conn} do
+    conn = get(conn, "/api/swaggerui")
+
+    assert html_response(conn, 200) =~ "Swagger UI"
+  end
 end
