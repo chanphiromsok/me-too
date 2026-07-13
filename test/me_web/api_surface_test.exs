@@ -34,7 +34,7 @@ defmodule MeWeb.ApiSurfaceTest do
     assert Enum.map(history["data"], & &1["id"]) == [fixture.order.id]
 
     receipt_query =
-      URI.encode_query(%{"include" => "line_items.product_variant,payments"})
+      URI.encode_query(%{"include" => "customer,line_items.product_variant,payments"})
 
     receipt =
       fixture.customer
@@ -47,6 +47,22 @@ defmodule MeWeb.ApiSurfaceTest do
     assert Enum.any?(receipt["included"], &(&1["type"] == "order_line_item"))
     assert Enum.any?(receipt["included"], &(&1["type"] == "product_variant"))
     assert Enum.any?(receipt["included"], &(&1["type"] == "payment"))
+
+    staff_receipt =
+      fixture.staff
+      |> api_conn()
+      |> get("/api/orders/#{fixture.order.id}?#{receipt_query}")
+      |> json_response(200)
+
+    assert Enum.any?(staff_receipt["included"], &(&1["type"] == "customer"))
+
+    customers =
+      fixture.staff
+      |> api_conn()
+      |> get("/api/customers")
+      |> json_response(200)
+
+    assert Enum.any?(customers["data"], &(&1["id"] == fixture.customer.id))
   end
 
   test "OpenAPI omits forbidden generic and destructive routes", %{conn: conn} do
@@ -62,6 +78,7 @@ defmodule MeWeb.ApiSurfaceTest do
 
     assert paths["/api/orders/{id}/submit"]["patch"]
     assert paths["/api/product-variants/{product_variant_id}/restock"]["post"]
+    assert paths["/api/customers"]["get"]
   end
 
   test "list endpoints enforce the maximum page size" do

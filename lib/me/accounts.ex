@@ -14,6 +14,7 @@ defmodule Me.Accounts do
       end
 
       base_route "/customers", Me.Accounts.Customer do
+        index :api_index
         post :register, route: "/register"
 
         post :sign_in_with_password,

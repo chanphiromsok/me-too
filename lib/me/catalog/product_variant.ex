@@ -8,6 +8,7 @@ defmodule Me.Catalog.ProductVariant do
 
   json_api do
     type "product_variant"
+    includes [:product]
   end
 
   postgres do

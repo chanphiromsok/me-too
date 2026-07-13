@@ -18,6 +18,11 @@ defmodule Me.Accounts.Customer do
   actions do
     defaults [:read, :update]
 
+    read :api_index do
+      pagination offset?: true, keyset?: true, default_limit: 25, max_page_size: 100
+      prepare build(sort: :name)
+    end
+
     create :create_by_staff do
       accept [:name, :email, :phone, :customer_type, :business_name]
       change relate_actor(:created_by)
@@ -170,7 +175,7 @@ defmodule Me.Accounts.Customer do
       authorize_if actor_attribute_equals(:role, :staff)
     end
 
-    policy action(:read) do
+    policy action([:read, :api_index]) do
       forbid_unless actor_attribute_equals(:active, true)
       authorize_if actor_attribute_equals(:role, :admin)
       authorize_if actor_attribute_equals(:role, :staff)
