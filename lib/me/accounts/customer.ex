@@ -1,4 +1,4 @@
-defmodule Me.Accounts.User do
+defmodule Me.Accounts.Customer do
   use Ash.Resource,
     otp_app: :me,
     domain: Me.Accounts,
@@ -7,21 +7,27 @@ defmodule Me.Accounts.User do
     extensions: [AshAuthentication, AshJsonApi.Resource]
 
   json_api do
-    type "user"
+    type "customer"
   end
 
   postgres do
-    table "users"
+    table "customers"
     repo Me.Repo
   end
 
   actions do
-    defaults [:read]
+    defaults [:read, :update]
+
+    create :create_by_staff do
+      accept [:name, :email, :phone, :customer_type, :business_name]
+      change relate_actor(:created_by)
+    end
 
     read :get_by_subject do
-      description "Get a user by the subject claim in a JWT"
+      description "Get a customer by the subject claim in a JWT"
       argument :subject, :string, allow_nil?: false
       get? true
+      filter expr(not is_nil(confirmed_at))
       prepare AshAuthentication.Preparations.FilterBySubject
     end
 
@@ -63,8 +69,8 @@ defmodule Me.Accounts.User do
         sensitive? true
       end
 
-      # validates the provided email and password and generates a token
-      filter expr(active == true)
+      # Only administrator-approved customers may sign in.
+      filter expr(not is_nil(confirmed_at))
       prepare AshAuthentication.Strategy.Password.SignInPreparation
 
       metadata :token, :string do
@@ -100,16 +106,12 @@ defmodule Me.Accounts.User do
       end
     end
 
-    create :register_with_password do
-      description "Register a new user with a email and password."
+    create :register do
+      description "Register a new customer with an email and password."
 
-      accept [:role]
+      accept [:name, :phone, :customer_type]
 
       argument :email, :ci_string do
-        allow_nil? false
-      end
-
-      argument :name, :string do
         allow_nil? false
       end
 
@@ -128,19 +130,19 @@ defmodule Me.Accounts.User do
 
       # Sets the email from the argument
       change set_attribute(:email, arg(:email))
-      change set_attribute(:name, arg(:name))
 
       # Hashes the provided password
       change AshAuthentication.Strategy.Password.HashPasswordChange
 
-      # Generates an authentication token for the user
+      # AshAuthentication requires registration to generate a token. It is not
+      # exposed by the API and cannot authenticate until an admin confirms the customer.
       change AshAuthentication.GenerateTokenChange
 
       # validates that the password matches the confirmation
       validate AshAuthentication.Strategy.Password.PasswordConfirmationValidation
 
       metadata :token, :string do
-        description "A JWT that can be used to authenticate the user."
+        description "An internal registration token that remains unusable until confirmation."
         allow_nil? false
       end
     end
@@ -150,9 +152,10 @@ defmodule Me.Accounts.User do
       get_by :email
     end
 
-    update :deactivate do
+    update :confirm do
+      description "Approve a customer account for password sign-in."
       accept []
-      change set_attribute(:active, false)
+      change set_attribute(:confirmed_at, &DateTime.utc_now/0)
     end
   end
 
@@ -161,18 +164,25 @@ defmodule Me.Accounts.User do
       authorize_if always()
     end
 
-    policy action(:sign_in_with_password) do
+    policy action(:create_by_staff) do
+      forbid_unless actor_attribute_equals(:active, true)
+      authorize_if actor_attribute_equals(:role, :admin)
+      authorize_if actor_attribute_equals(:role, :staff)
+    end
+
+    policy action(:read) do
+      forbid_unless actor_attribute_equals(:active, true)
+      authorize_if actor_attribute_equals(:role, :admin)
+      authorize_if actor_attribute_equals(:role, :staff)
+    end
+
+    policy action(:confirm) do
+      forbid_unless actor_attribute_equals(:active, true)
+      authorize_if actor_attribute_equals(:role, :admin)
+    end
+
+    policy action([:register, :sign_in_with_password]) do
       authorize_if always()
-    end
-
-    policy action(:register_with_password) do
-      forbid_unless actor_attribute_equals(:active, true)
-      authorize_if actor_attribute_equals(:role, :admin)
-    end
-
-    policy action(:deactivate) do
-      forbid_unless actor_attribute_equals(:active, true)
-      authorize_if actor_attribute_equals(:role, :admin)
     end
   end
 
@@ -180,40 +190,49 @@ defmodule Me.Accounts.User do
     uuid_primary_key :id
 
     attribute :email, :ci_string do
-      allow_nil? false
       public? true
     end
 
     attribute :hashed_password, :string do
-      allow_nil? false
       sensitive? true
     end
 
-    attribute :confirmed_at, :utc_datetime_usec
+    attribute :confirmed_at, :utc_datetime_usec do
+      public? true
+    end
 
     attribute :name, :string do
       allow_nil? false
       public? true
     end
 
-    attribute :role, :atom do
-      allow_nil? false
-      constraints one_of: [:admin, :staff]
-      default :staff
+    attribute :phone, :string do
       public? true
     end
 
-    attribute :active, :boolean do
+    attribute :customer_type, :atom do
       allow_nil? false
-      default true
+      constraints one_of: [:retail, :wholesale]
+      default :retail
+      public? true
+    end
+
+    attribute :business_name, :string do
       public? true
     end
 
     timestamps()
   end
 
+  relationships do
+    belongs_to :created_by, Me.Accounts.User do
+      source_attribute :created_by_user_id
+      public? true
+    end
+  end
+
   identities do
-    identity :unique_email, [:email]
+    identity :unique_email, [:email], nils_distinct?: true
   end
 
   authentication do
@@ -229,15 +248,11 @@ defmodule Me.Accounts.User do
       password :password do
         identity_field :email
         hash_provider AshAuthentication.BcryptProvider
+        register_action_name :register
+        require_confirmed_with :confirmed_at
       end
 
       remember_me :remember_me
-    end
-
-    add_ons do
-      log_out_everywhere do
-        apply_on_password_change? true
-      end
     end
   end
 end
