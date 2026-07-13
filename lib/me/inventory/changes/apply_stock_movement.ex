@@ -30,7 +30,7 @@ defmodule Me.Inventory.Changes.ApplyStockMovement do
   defp validate_direction(0, _reason), do: {:error, "must not be zero"}
 
   defp validate_direction(delta, reason)
-       when reason in [:restock, :cancellation_restock] and delta < 0,
+       when reason in [:restock, :cancellation_restock, :return_restock] and delta < 0,
        do: {:error, "must be positive for #{reason}"}
 
   defp validate_direction(delta, :sale) when delta > 0,

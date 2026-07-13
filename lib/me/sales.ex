@@ -14,6 +14,7 @@ defmodule Me.Sales do
         patch :submit, route: "/:id/submit"
         patch :fulfill, route: "/:id/fulfill"
         patch :cancel, route: "/:id/cancel"
+        patch :return, route: "/:id/return"
         patch :set_discount, route: "/:id/discount"
       end
 

@@ -83,6 +83,18 @@ defmodule Me.Inventory.StockMovement do
       change Me.Inventory.Changes.ApplyStockMovement
     end
 
+    create :return_restock do
+      accept [:reference_type, :reference_id, :note]
+      argument :product_variant_id, :uuid, allow_nil?: false
+      argument :quantity, :integer, allow_nil?: false, constraints: [min: 1]
+
+      change set_attribute(:product_variant_id, arg(:product_variant_id))
+      change set_attribute(:reason, :return_restock)
+      change {Me.Inventory.Changes.SetSignedDelta, sign: :positive}
+      change relate_actor(:actor, allow_nil?: true)
+      change Me.Inventory.Changes.ApplyStockMovement
+    end
+
     create :adjust do
       accept [:reference_type, :reference_id, :note]
       argument :product_variant_id, :uuid, allow_nil?: false
@@ -125,6 +137,7 @@ defmodule Me.Inventory.StockMovement do
                     :restock,
                     :sale,
                     :cancellation_restock,
+                    :return_restock,
                     :adjustment
                   ]
 

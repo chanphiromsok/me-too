@@ -55,6 +55,33 @@ defmodule MeWeb.SalesApiTest do
     assert json_response(illegal, 409)["errors"]
   end
 
+  test "staff can return a fulfilled order through JSON API" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 2)
+    order = create_order_with_line!(customer, variant, 1)
+
+    fulfilled =
+      order
+      |> Ash.update!(%{}, action: :submit, actor: customer)
+      |> Ash.update!(%{}, action: :fulfill, actor: staff)
+
+    response =
+      staff
+      |> api_conn()
+      |> patch_json_api(
+        "/api/orders/#{fulfilled.id}/return",
+        "order",
+        fulfilled.id,
+        %{return_reason: "Customer return"}
+      )
+      |> json_response(200)
+
+    assert response["data"]["attributes"]["status"] == "returned"
+    assert response["data"]["attributes"]["return_reason"] == "Customer return"
+    assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 2
+  end
+
   defp create_order_with_line!(customer, variant, quantity) do
     order = Ash.create!(Order, %{}, actor: customer)
 

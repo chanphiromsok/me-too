@@ -21,6 +21,8 @@ defmodule Me.Sales.Order do
       :fulfilled_at,
       :cancelled_at,
       :cancel_reason,
+      :returned_at,
+      :return_reason,
       :inserted_at,
       :updated_at
     ]
@@ -51,6 +53,7 @@ defmodule Me.Sales.Order do
       transition :submit, from: :draft, to: :pending
       transition :fulfill, from: :pending, to: :fulfilled
       transition :cancel, from: [:draft, :pending], to: :cancelled
+      transition :return, from: :fulfilled, to: :returned
     end
   end
 
@@ -95,6 +98,14 @@ defmodule Me.Sales.Order do
       change set_attribute(:cancelled_at, &DateTime.utc_now/0)
     end
 
+    update :return do
+      accept [:return_reason]
+      require_atomic? false
+      change Me.Sales.Changes.RestockReturnedOrder
+      change transition_state(:returned)
+      change set_attribute(:returned_at, &DateTime.utc_now/0)
+    end
+
     update :set_subtotal do
       public? false
       accept [:subtotal_cents]
@@ -131,7 +142,7 @@ defmodule Me.Sales.Order do
 
     attribute :status, :atom do
       allow_nil? false
-      constraints one_of: [:draft, :pending, :fulfilled, :cancelled]
+      constraints one_of: [:draft, :pending, :fulfilled, :cancelled, :returned]
       default :draft
       public? true
     end
@@ -162,6 +173,14 @@ defmodule Me.Sales.Order do
     end
 
     attribute :cancel_reason, :string do
+      public? true
+    end
+
+    attribute :returned_at, :utc_datetime_usec do
+      public? true
+    end
+
+    attribute :return_reason, :string do
       public? true
     end
 

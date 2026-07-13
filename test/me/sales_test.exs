@@ -89,6 +89,39 @@ defmodule Me.SalesTest do
              Ash.update(fulfilled, %{}, action: :cancel, actor: customer)
   end
 
+  test "returning a fulfilled order restores every item once" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 4, 2_000)
+    order = order_with_line!(customer, variant, 2)
+
+    fulfilled =
+      order
+      |> Ash.update!(%{}, action: :submit, actor: customer)
+      |> Ash.update!(%{}, action: :fulfill, actor: staff)
+
+    assert quantity(variant) == 2
+
+    returned =
+      Ash.update!(
+        fulfilled,
+        %{return_reason: "Wrong size"},
+        action: :return,
+        actor: staff
+      )
+
+    assert returned.status == :returned
+    assert returned.return_reason == "Wrong size"
+    assert %DateTime{} = returned.returned_at
+    assert quantity(variant) == 4
+    assert movement_reasons(variant) == [:restock, :return_restock, :sale]
+
+    assert {:error, %Ash.Error.Invalid{}} =
+             Ash.update(returned, %{}, action: :return, actor: staff)
+
+    assert quantity(variant) == 4
+  end
+
   test "insufficient stock rolls back all movements and leaves the order draft" do
     staff = create_staff!()
     customer = create_customer!()
