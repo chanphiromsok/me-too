@@ -63,7 +63,8 @@ defmodule Me.Sales.Order do
 
     create :create do
       primary? true
-      accept [:customer_id]
+      accept []
+      argument :customer_id, :uuid
       change Me.Sales.Changes.SetOrderActors
     end
 

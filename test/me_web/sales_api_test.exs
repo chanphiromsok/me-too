@@ -8,6 +8,20 @@ defmodule MeWeb.SalesApiTest do
 
   @password "password123"
 
+  test "customer order creation derives the customer from the bearer token" do
+    customer = create_customer!()
+
+    order =
+      api_conn(customer)
+      |> post(
+        "/api/orders",
+        Jason.encode!(%{data: %{type: "order", attributes: %{}}})
+      )
+      |> json_response(201)
+
+    assert order["data"]["attributes"]["status"] == "draft"
+  end
+
   test "cross-customer order probes return 404" do
     owner = create_customer!()
     other = create_customer!()
