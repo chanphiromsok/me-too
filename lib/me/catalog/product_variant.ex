@@ -27,7 +27,6 @@ defmodule Me.Catalog.ProductVariant do
         :size,
         :color,
         :price_cents,
-        :quantity_on_hand,
         :barcode,
         :active
       ]
@@ -36,6 +35,11 @@ defmodule Me.Catalog.ProductVariant do
     update :update do
       primary? true
       accept [:sku, :size, :color, :price_cents, :barcode, :active]
+    end
+
+    update :set_quantity_on_hand do
+      public? false
+      accept [:quantity_on_hand]
     end
   end
 

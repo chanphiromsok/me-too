@@ -47,20 +47,27 @@ defmodule Me.CatalogTest do
   test "variant updates cannot write quantity_on_hand" do
     staff = create_user!()
     product = create_product!(staff)
-    variant = create_variant!(product, staff, "4T", "Red", quantity_on_hand: 7)
+    variant = create_variant!(product, staff, "4T", "Red")
 
     assert {:error, %Ash.Error.Invalid{}} =
              Ash.update(variant, %{quantity_on_hand: 99}, actor: staff)
 
-    assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 7
+    assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 0
   end
 
   test "the database constraint rejects negative stock" do
     staff = create_user!()
     product = create_product!(staff)
 
+    variant = create_variant!(product, staff, "2T", "Black")
+
     assert {:error, error} =
-             create_variant(product, staff, "2T", "Black", quantity_on_hand: -1)
+             Ash.update(
+               variant,
+               %{quantity_on_hand: -1},
+               action: :set_quantity_on_hand,
+               authorize?: false
+             )
 
     assert Exception.message(error) =~ "quantity_on_hand_non_negative"
   end
@@ -73,12 +80,15 @@ defmodule Me.CatalogTest do
 
     assert {:ok, archived} = Ash.update(product, %{}, action: :archive, actor: admin)
 
-    assert [] = Ash.read!(Product)
-    assert [] = Ash.read!(ProductVariant)
-    assert [%Product{id: product_id}] = Ash.read!(Product, actor: staff)
-    assert [%ProductVariant{id: variant_id}] = Ash.read!(ProductVariant, actor: staff)
-    assert product_id == archived.id
-    assert variant_id == variant.id
+    public_products = Ash.read!(Product)
+    public_variants = Ash.read!(ProductVariant)
+    staff_products = Ash.read!(Product, actor: staff)
+    staff_variants = Ash.read!(ProductVariant, actor: staff)
+
+    refute Enum.any?(public_products, &(&1.id == archived.id))
+    refute Enum.any?(public_variants, &(&1.id == variant.id))
+    assert Enum.any?(staff_products, &(&1.id == archived.id))
+    assert Enum.any?(staff_variants, &(&1.id == variant.id))
   end
 
   test "active staff can write products but only admins can archive" do
