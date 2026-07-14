@@ -108,20 +108,46 @@ defmodule Me.Sales.Order do
     update :submit do
       accept []
       require_atomic? false
+
+      argument :initial_payment_amount_cents, :integer do
+        constraints min: 0
+      end
+
+      argument :initial_payment_method, :atom do
+        constraints one_of: [:cash, :bank_transfer, :card_manual, :other]
+      end
+
+      argument :initial_payment_note, :string
+      argument :initial_payment_external_reference, :string
+
       change {Me.Sales.Changes.EnsureOrderKind, kind: :sale}
       change Me.Sales.Changes.CommitOrderStock
       change transition_state(:pending)
       change set_attribute(:placed_at, &DateTime.utc_now/0)
+      change Me.Sales.Changes.RecordInitialPayment
     end
 
     update :confirm_preorder do
       accept []
       require_atomic? false
+
+      argument :initial_payment_amount_cents, :integer do
+        constraints min: 0
+      end
+
+      argument :initial_payment_method, :atom do
+        constraints one_of: [:cash, :bank_transfer, :card_manual, :other]
+      end
+
+      argument :initial_payment_note, :string
+      argument :initial_payment_external_reference, :string
+
       change {Me.Sales.Changes.EnsureOrderKind, kind: :preorder}
       change Me.Sales.Changes.EnsureOrderHasLineItems
       change transition_state(:pending)
       change set_attribute(:fulfillment_status, :awaiting_stock)
       change set_attribute(:placed_at, &DateTime.utc_now/0)
+      change Me.Sales.Changes.RecordInitialPayment
     end
 
     update :allocate_preorder do

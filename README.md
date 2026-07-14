@@ -82,7 +82,31 @@ Orders use one of two payment terms:
 Customers cannot grant credit to themselves. Staff creates a credit order with
 `payment_terms: "credit"`, the customer's `customer_id`, and optionally a
 `payment_due_at` timestamp. Order responses expose `total_cents`, `paid_cents`,
-`balance_cents`, and `payment_state`.
+`balance_cents`, and `payment_state` (`unpaid`, `partially_paid`, or `paid`).
+
+When staff submits a sale with `PATCH /api/orders/:id/submit` or confirms a
+preorder with `PATCH /api/orders/:id/confirm-preorder`, the request may include
+an amount received at checkout:
+
+```json
+{
+  "data": {
+    "type": "order",
+    "id": "ORDER_ID",
+    "attributes": {
+      "initial_payment_amount_cents": 750,
+      "initial_payment_method": "bank_transfer",
+      "initial_payment_note": "Customer paid at checkout"
+    }
+  }
+}
+```
+
+The amount is optional. Omitting it or sending `0` leaves the invoice unpaid.
+A positive amount requires `initial_payment_method`, cannot exceed the order
+total, and is recorded in the payment ledger in the same transaction as order
+submission. This lets the UI label the field **Amount paid now** and immediately
+show the remaining balance without maintaining a separate paid/unpaid flag.
 
 Payments are recorded manually with
 `POST /api/orders/:order_id/payments`. `cash`, `bank_transfer`, `card_manual`,

@@ -106,7 +106,7 @@ defmodule MeWeb.SalesApiTest do
     assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 2
   end
 
-  test "staff confirms and allocates a preorder through JSON API" do
+  test "staff confirms a preorder with an initial payment and allocates stock" do
     staff = create_staff!()
     customer = create_customer!()
     variant = create_stocked_variant!(staff, 2)
@@ -138,11 +138,18 @@ defmodule MeWeb.SalesApiTest do
         "/api/orders/#{preorder.id}/confirm-preorder",
         "order",
         preorder.id,
-        %{}
+        %{
+          initial_payment_amount_cents: 500,
+          initial_payment_method: "cash",
+          initial_payment_note: "Deposit received"
+        }
       )
       |> json_response(200)
 
     assert confirmed["data"]["attributes"]["fulfillment_status"] == "awaiting_stock"
+    assert confirmed["data"]["attributes"]["payment_state"] == "partially_paid"
+    assert confirmed["data"]["attributes"]["paid_cents"] == 500
+    assert confirmed["data"]["attributes"]["balance_cents"] == 1_500
     assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 2
 
     allocated =
@@ -311,6 +318,113 @@ defmodule MeWeb.SalesApiTest do
            |> api_conn()
            |> patch_json_api(void_path, "payment", payment_id, %{})
            |> json_response(400)
+  end
+
+  test "staff submits a credit sale with an initial partial payment" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 2)
+
+    order =
+      Ash.create!(
+        Order,
+        %{customer_id: customer.id, payment_terms: :credit},
+        actor: staff
+      )
+
+    _line =
+      Ash.create!(
+        Me.Sales.OrderLineItem,
+        %{order_id: order.id, product_variant_id: variant.id, quantity: 2},
+        action: :add_line_item,
+        actor: staff
+      )
+
+    submitted =
+      staff
+      |> api_conn()
+      |> patch_json_api("/api/orders/#{order.id}/submit", "order", order.id, %{
+        initial_payment_amount_cents: 750,
+        initial_payment_method: "bank_transfer",
+        initial_payment_note: "Customer paid at checkout",
+        initial_payment_external_reference: "bank-#{System.unique_integer([:positive])}"
+      })
+      |> json_response(200)
+
+    assert submitted["data"]["attributes"]["status"] == "pending"
+    assert submitted["data"]["attributes"]["payment_state"] == "partially_paid"
+    assert submitted["data"]["attributes"]["paid_cents"] == 750
+    assert submitted["data"]["attributes"]["balance_cents"] == 1_250
+
+    assert [payment] = Ash.read!(Payment, authorize?: false)
+    assert payment.amount_cents == 750
+    assert payment.method == :bank_transfer
+    assert payment.recorded_by_user_id == staff.id
+  end
+
+  test "an invalid initial payment rolls back order submission and stock" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 1)
+
+    order =
+      Ash.create!(
+        Order,
+        %{customer_id: customer.id, payment_terms: :credit},
+        actor: staff
+      )
+
+    _line =
+      Ash.create!(
+        Me.Sales.OrderLineItem,
+        %{order_id: order.id, product_variant_id: variant.id, quantity: 1},
+        action: :add_line_item,
+        actor: staff
+      )
+
+    missing_method =
+      staff
+      |> api_conn()
+      |> patch_json_api("/api/orders/#{order.id}/submit", "order", order.id, %{
+        initial_payment_amount_cents: 500
+      })
+
+    assert json_response(missing_method, 400)["errors"]
+    assert Ash.reload!(order, authorize?: false).status == :draft
+    assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 1
+
+    response =
+      staff
+      |> api_conn()
+      |> patch_json_api("/api/orders/#{order.id}/submit", "order", order.id, %{
+        initial_payment_amount_cents: 1_001,
+        initial_payment_method: "cash"
+      })
+
+    assert json_response(response, 400)["errors"]
+    assert Ash.reload!(order, authorize?: false).status == :draft
+    assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 1
+    assert Ash.read!(Payment, authorize?: false) == []
+  end
+
+  test "a customer cannot record a manual initial payment" do
+    customer = create_customer!()
+    staff = create_staff!()
+    variant = create_stocked_variant!(staff, 1)
+    order = create_order_with_line!(customer, variant, 1)
+
+    response =
+      customer
+      |> api_conn()
+      |> patch_json_api("/api/orders/#{order.id}/submit", "order", order.id, %{
+        initial_payment_amount_cents: 500,
+        initial_payment_method: "cash"
+      })
+
+    assert json_response(response, 400)["errors"]
+    assert Ash.reload!(order, authorize?: false).status == :draft
+    assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 1
+    assert Ash.read!(Payment, authorize?: false) == []
   end
 
   test "staff records partial credit payments and reads the receivables report" do
