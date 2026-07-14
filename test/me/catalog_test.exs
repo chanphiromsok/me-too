@@ -72,6 +72,22 @@ defmodule Me.CatalogTest do
     assert Exception.message(error) =~ "quantity_on_hand_non_negative"
   end
 
+  test "the database constraint rejects reservations greater than physical stock" do
+    staff = create_user!()
+    product = create_product!(staff)
+    variant = create_variant!(product, staff, "2T", "Navy")
+
+    assert {:error, error} =
+             Ash.update(
+               variant,
+               %{reserved_quantity: 1},
+               action: :set_reserved_quantity,
+               authorize?: false
+             )
+
+    assert Exception.message(error) =~ "cannot exceed quantity on hand"
+  end
+
   test "public reads hide archived products and their variants from non-staff" do
     admin = create_user!(role: :admin)
     staff = create_user!()

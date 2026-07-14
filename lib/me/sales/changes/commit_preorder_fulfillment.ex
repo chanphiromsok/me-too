@@ -14,7 +14,7 @@ defmodule Me.Sales.Changes.CommitPreorderFulfillment do
 
   defp commit_preorder(%{data: %{fulfillment_status: :ready}} = changeset, context) do
     changeset
-    |> ReleasePreorderStock.release()
+    |> ReleasePreorderStock.release(:consumed)
     |> CommitOrderStock.commit(context)
   end
 

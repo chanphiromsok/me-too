@@ -1,18 +1,21 @@
 defmodule Me.Sales.Changes.ReleasePreorderStock do
   alias Me.Catalog.ProductVariant
+  alias Me.Inventory.InventoryAllocation
   alias Me.Sales.OrderLineItem
 
   require Ash.Query
 
-  def release(changeset) do
+  def release(changeset, disposition) when disposition in [:consumed, :released] do
     changeset.data.id
     |> order_lines()
-    |> Enum.reduce_while(changeset, &release_line/2)
+    |> Enum.reduce_while(changeset, &release_line(&1, &2, disposition))
   end
 
-  defp release_line(line, changeset) do
+  defp release_line(line, changeset, disposition) do
     with {:ok, variant} <- lock_variant(line.product_variant_id),
          :ok <- ensure_reserved(variant, line.quantity),
+         {:ok, allocation} <- reserved_allocation(line.id),
+         {:ok, _allocation} <- close_allocation(allocation, disposition),
          {:ok, _variant} <- set_reserved(variant, variant.reserved_quantity - line.quantity) do
       {:cont, changeset}
     else
@@ -22,6 +25,24 @@ defmodule Me.Sales.Changes.ReleasePreorderStock do
       {:error, error} ->
         {:halt, Ash.Changeset.add_error(changeset, error)}
     end
+  end
+
+  defp reserved_allocation(order_line_item_id) do
+    InventoryAllocation
+    |> Ash.Query.filter(order_line_item_id == ^order_line_item_id and status == :reserved)
+    |> Ash.read_one(authorize?: false)
+    |> case do
+      {:ok, nil} -> {:error, "reserved stock allocation does not exist"}
+      result -> result
+    end
+  end
+
+  defp close_allocation(allocation, :consumed) do
+    Ash.update(allocation, %{}, action: :consume, authorize?: false)
+  end
+
+  defp close_allocation(allocation, :released) do
+    Ash.update(allocation, %{}, action: :release, authorize?: false)
   end
 
   defp order_lines(order_id) do

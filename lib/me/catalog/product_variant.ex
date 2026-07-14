@@ -14,6 +14,12 @@ defmodule Me.Catalog.ProductVariant do
   postgres do
     table "product_variants"
     repo Me.Repo
+
+    check_constraints do
+      check_constraint :reserved_quantity, "reserved_quantity_cannot_exceed_stock",
+        check: "reserved_quantity <= quantity_on_hand",
+        message: "cannot exceed quantity on hand"
+    end
   end
 
   actions do

@@ -3,7 +3,7 @@ defmodule Me.SalesTest do
 
   alias Me.Accounts.{Customer, User}
   alias Me.Catalog.{Product, ProductVariant}
-  alias Me.Inventory.StockMovement
+  alias Me.Inventory.{InventoryAllocation, StockMovement}
   alias Me.Sales.{Order, OrderLineItem, Payment}
 
   @password "password123"
@@ -168,12 +168,22 @@ defmodule Me.SalesTest do
     assert quantity(variant) == 5
     assert reserved_quantity(variant) == 2
 
+    allocation = allocation_for_variant!(variant)
+    assert allocation.quantity == 2
+    assert allocation.status == :reserved
+    assert allocation.allocated_by_user_id == staff.id
+
     fulfilled = Ash.update!(ready, %{}, action: :fulfill, actor: staff)
     assert fulfilled.status == :fulfilled
     assert fulfilled.fulfillment_status == :fulfilled
     assert quantity(variant) == 3
     assert reserved_quantity(variant) == 0
     assert movement_reasons(variant) == [:restock, :sale]
+
+    consumed_allocation = Ash.reload!(allocation, authorize?: false)
+    assert consumed_allocation.status == :consumed
+    assert %DateTime{} = consumed_allocation.consumed_at
+    assert is_nil(consumed_allocation.released_at)
   end
 
   test "reserved preorder stock cannot be sold and cancellation releases it" do
@@ -191,6 +201,22 @@ defmodule Me.SalesTest do
     assert {:error, sale_error} = Ash.update(sale, %{}, action: :submit, actor: staff)
     assert Exception.message(sale_error) =~ "reserved for another order"
 
+    assert {:error, adjustment_error} =
+             Ash.create(
+               StockMovement,
+               %{
+                 product_variant_id: variant.id,
+                 quantity: 1,
+                 direction: :decrease,
+                 note: "Count correction"
+               },
+               action: :adjust,
+               actor: staff
+             )
+
+    assert Exception.message(adjustment_error) =~ "reserved for another order"
+    assert quantity(variant) == 2
+
     cancelled =
       Ash.update!(
         ready_preorder,
@@ -204,6 +230,11 @@ defmodule Me.SalesTest do
     assert quantity(variant) == 2
     assert reserved_quantity(variant) == 0
     assert movement_reasons(variant) == [:restock]
+
+    released_allocation = allocation_for_variant!(variant)
+    assert released_allocation.status == :released
+    assert %DateTime{} = released_allocation.released_at
+    assert is_nil(released_allocation.consumed_at)
   end
 
   test "customers cannot discover another customer's order" do
@@ -333,6 +364,12 @@ defmodule Me.SalesTest do
     |> Enum.filter(&(&1.product_variant_id == variant.id))
     |> Enum.map(& &1.reason)
     |> Enum.sort()
+  end
+
+  defp allocation_for_variant!(variant) do
+    InventoryAllocation
+    |> Ash.read!(authorize?: false)
+    |> Enum.find(&(&1.product_variant_id == variant.id))
   end
 
   defp quantity(variant) do

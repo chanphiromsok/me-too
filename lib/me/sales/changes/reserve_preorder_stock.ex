@@ -2,16 +2,18 @@ defmodule Me.Sales.Changes.ReservePreorderStock do
   use Ash.Resource.Change
 
   alias Me.Catalog.ProductVariant
+  alias Me.Inventory.InventoryAllocation
+  alias Me.Accounts.User
   alias Me.Sales.OrderLineItem
 
   require Ash.Query
 
   @impl Ash.Resource.Change
-  def change(changeset, _opts, _context) do
-    Ash.Changeset.before_action(changeset, &reserve_order_stock/1)
+  def change(changeset, _opts, context) do
+    Ash.Changeset.before_action(changeset, &reserve_order_stock(&1, context))
   end
 
-  defp reserve_order_stock(changeset) do
+  defp reserve_order_stock(changeset, context) do
     cond do
       changeset.data.status != :pending ->
         Ash.Changeset.add_error(changeset,
@@ -28,14 +30,15 @@ defmodule Me.Sales.Changes.ReservePreorderStock do
       true ->
         changeset.data.id
         |> order_lines()
-        |> Enum.reduce_while(changeset, &reserve_line/2)
+        |> Enum.reduce_while(changeset, &reserve_line(&1, &2, context))
     end
   end
 
-  defp reserve_line(line, changeset) do
+  defp reserve_line(line, changeset, context) do
     with {:ok, variant} <- lock_variant(line.product_variant_id),
          :ok <- ensure_available(variant, line.quantity),
-         {:ok, _variant} <- set_reserved(variant, variant.reserved_quantity + line.quantity) do
+         {:ok, _variant} <- set_reserved(variant, variant.reserved_quantity + line.quantity),
+         {:ok, _allocation} <- create_allocation(line, context) do
       {:cont, changeset}
     else
       {:error, message} when is_binary(message) ->
@@ -44,6 +47,22 @@ defmodule Me.Sales.Changes.ReservePreorderStock do
       {:error, error} ->
         {:halt, Ash.Changeset.add_error(changeset, error)}
     end
+  end
+
+  defp create_allocation(line, context) do
+    allocated_by_user_id = if match?(%User{}, context.actor), do: context.actor.id
+
+    Ash.create(
+      InventoryAllocation,
+      %{
+        order_line_item_id: line.id,
+        product_variant_id: line.product_variant_id,
+        quantity: line.quantity,
+        allocated_by_user_id: allocated_by_user_id
+      },
+      action: :reserve,
+      authorize?: false
+    )
   end
 
   defp order_lines(order_id) do

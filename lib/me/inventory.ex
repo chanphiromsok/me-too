@@ -16,6 +16,7 @@ defmodule Me.Inventory do
   end
 
   resources do
+    resource Me.Inventory.InventoryAllocation
     resource Me.Inventory.StockMovement
   end
 end

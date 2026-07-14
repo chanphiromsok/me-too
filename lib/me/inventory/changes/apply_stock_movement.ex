@@ -49,17 +49,13 @@ defmodule Me.Inventory.Changes.ApplyStockMovement do
     end
   end
 
-  defp validate_quantity(variant, delta, :sale)
+  defp validate_quantity(variant, delta, _reason)
        when variant.quantity_on_hand + delta < 0,
        do: {:error, "would oversell this variant"}
 
-  defp validate_quantity(variant, delta, :sale)
-       when variant.quantity_on_hand - variant.reserved_quantity + delta < 0,
+  defp validate_quantity(variant, delta, _reason)
+       when delta < 0 and variant.quantity_on_hand + delta < variant.reserved_quantity,
        do: {:error, "would use stock reserved for another order"}
-
-  defp validate_quantity(variant, delta, reason)
-       when variant.quantity_on_hand + delta < 0 and reason != :adjustment,
-       do: {:error, "would oversell this variant"}
 
   defp validate_quantity(_variant, _delta, _reason), do: :ok
 

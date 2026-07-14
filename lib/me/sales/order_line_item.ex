@@ -91,6 +91,8 @@ defmodule Me.Sales.OrderLineItem do
       allow_nil? false
       public? true
     end
+
+    has_one :inventory_allocation, Me.Inventory.InventoryAllocation
   end
 
   calculations do
