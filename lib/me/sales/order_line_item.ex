@@ -13,6 +13,12 @@ defmodule Me.Sales.OrderLineItem do
   postgres do
     table "order_line_items"
     repo Me.Repo
+
+    check_constraints do
+      check_constraint :unit_price_cents, "order_line_item_unit_price_non_negative",
+        check: "unit_price_cents >= 0",
+        message: "must be greater than or equal to zero"
+    end
   end
 
   actions do
@@ -75,6 +81,7 @@ defmodule Me.Sales.OrderLineItem do
 
     attribute :unit_price_cents, :integer do
       allow_nil? false
+      constraints min: 0
       public? true
     end
 

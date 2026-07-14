@@ -13,6 +13,12 @@ defmodule Me.Sales.Payment do
   postgres do
     table "payments"
     repo Me.Repo
+
+    check_constraints do
+      check_constraint :amount_cents, "payment_amount_positive",
+        check: "amount_cents > 0",
+        message: "must be greater than zero"
+    end
   end
 
   actions do

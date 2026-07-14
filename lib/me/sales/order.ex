@@ -36,6 +36,16 @@ defmodule Me.Sales.Order do
   postgres do
     table "orders"
     repo Me.Repo
+
+    check_constraints do
+      check_constraint :subtotal_cents, "order_subtotal_non_negative",
+        check: "subtotal_cents >= 0",
+        message: "must be greater than or equal to zero"
+
+      check_constraint :discount_cents, "order_discount_not_greater_than_subtotal",
+        check: "discount_cents >= 0 AND discount_cents <= subtotal_cents",
+        message: "cannot exceed the subtotal"
+    end
   end
 
   field_policies do
@@ -205,6 +215,7 @@ defmodule Me.Sales.Order do
 
     attribute :subtotal_cents, :integer do
       allow_nil? false
+      constraints min: 0
       default 0
       public? true
     end

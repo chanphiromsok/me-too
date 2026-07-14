@@ -55,6 +55,20 @@ defmodule Me.CatalogTest do
     assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 0
   end
 
+  test "variant prices cannot be negative" do
+    staff = create_user!()
+    product = create_product!(staff)
+
+    assert {:error, error} =
+             create_variant(product, staff, "4T", "Yellow", price_cents: -1)
+
+    assert Exception.message(error) =~ "must be greater than or equal to 0"
+
+    variant = create_variant!(product, staff, "4T", "Yellow")
+    assert {:error, _error} = Ash.update(variant, %{price_cents: -1}, actor: staff)
+    assert Ash.reload!(variant, authorize?: false).price_cents == 1_299
+  end
+
   test "the database constraint rejects negative stock" do
     staff = create_user!()
     product = create_product!(staff)

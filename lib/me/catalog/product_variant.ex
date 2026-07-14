@@ -16,6 +16,10 @@ defmodule Me.Catalog.ProductVariant do
     repo Me.Repo
 
     check_constraints do
+      check_constraint :price_cents, "product_variant_price_non_negative",
+        check: "price_cents >= 0",
+        message: "must be greater than or equal to zero"
+
       check_constraint :reserved_quantity, "reserved_quantity_cannot_exceed_stock",
         check: "reserved_quantity <= quantity_on_hand",
         message: "cannot exceed quantity on hand"
@@ -97,6 +101,7 @@ defmodule Me.Catalog.ProductVariant do
 
     attribute :price_cents, :integer do
       allow_nil? false
+      constraints min: 0
       public? true
     end
 

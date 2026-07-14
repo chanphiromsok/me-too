@@ -465,6 +465,21 @@ defmodule Me.SalesTest do
     assert payment_state(order, customer) == :unpaid
   end
 
+  test "a discount cannot make the order total negative" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 2, 1_000)
+    order = order_with_line!(customer, variant, 1)
+
+    assert {:error, error} =
+             Ash.update(order, %{discount_cents: 1_001}, action: :set_discount, actor: staff)
+
+    assert Exception.message(error) =~ "cannot exceed the subtotal"
+    unchanged_order = Ash.reload!(order, authorize?: false)
+    assert unchanged_order.subtotal_cents == 1_000
+    assert unchanged_order.discount_cents == 0
+  end
+
   test "order numbers are sequential and unique" do
     customer = create_customer!()
     first = Ash.create!(Order, %{}, actor: customer)
