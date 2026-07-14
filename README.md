@@ -46,6 +46,32 @@ enabled unless the Docker build argument `FORCE_SSL=false` is explicitly used.
 
 Ready to run in production? Please [check our deployment guides](https://phoenix.hexdocs.pm/deployment.html).
 
+## Deploy a free testing environment on Render
+
+The repository includes a [`render.yaml`](render.yaml) Blueprint that creates:
+
+- a free Docker web service in Render's Singapore region;
+- a free PostgreSQL 17 database in the same region;
+- generated signing secrets and a private database connection;
+- automatic migrations and idempotent demo data seeding on startup.
+
+Push the repository to GitHub, then in the Render Dashboard choose
+**New → Blueprint**, connect the repository, and apply the Blueprint. After the
+first deployment finishes, verify these endpoints using the URL Render assigns:
+
+```sh
+curl https://YOUR-SERVICE.onrender.com/health
+open https://YOUR-SERVICE.onrender.com/api/swaggerui
+```
+
+The testing environment uses the same demo login:
+`staff@example.com` / `password123`.
+
+The free web service sleeps after 15 minutes without traffic. The free database
+is limited to 1 GB, has no backups, and expires after 30 days. Do not enter real
+business or payment data. Before production, upgrade both services, remove demo
+seeding from `dockerCommand`, and move migrations to Render's pre-deploy command.
+
 ## Credit sales and manual payments
 
 Orders use one of two payment terms:

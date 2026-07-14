@@ -52,7 +52,11 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
-  host = System.get_env("PHX_HOST") || "example.com"
+  host =
+    System.get_env("PHX_HOST") ||
+      System.get_env("RENDER_EXTERNAL_HOSTNAME") ||
+      "example.com"
+
   scheme = System.get_env("PHX_SCHEME") || "https"
 
   url_port =
