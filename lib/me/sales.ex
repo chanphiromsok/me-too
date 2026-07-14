@@ -12,6 +12,8 @@ defmodule Me.Sales do
         get :read
         post :create
         patch :submit, route: "/:id/submit"
+        patch :confirm_preorder, route: "/:id/confirm-preorder"
+        patch :allocate_preorder, route: "/:id/allocate-stock"
         patch :fulfill, route: "/:id/fulfill"
         patch :cancel, route: "/:id/cancel"
         patch :return, route: "/:id/return"

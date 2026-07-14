@@ -82,6 +82,55 @@ defmodule MeWeb.SalesApiTest do
     assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 2
   end
 
+  test "staff confirms and allocates a preorder through JSON API" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 2)
+
+    preorder =
+      Ash.create!(
+        Order,
+        %{customer_id: customer.id, order_kind: :preorder, sales_channel: :group_chat},
+        actor: staff
+      )
+
+    _line =
+      Ash.create!(
+        Me.Sales.OrderLineItem,
+        %{order_id: preorder.id, product_variant_id: variant.id, quantity: 2},
+        action: :add_line_item,
+        actor: staff
+      )
+
+    confirmed =
+      staff
+      |> api_conn()
+      |> patch_json_api(
+        "/api/orders/#{preorder.id}/confirm-preorder",
+        "order",
+        preorder.id,
+        %{}
+      )
+      |> json_response(200)
+
+    assert confirmed["data"]["attributes"]["fulfillment_status"] == "awaiting_stock"
+    assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 2
+
+    allocated =
+      staff
+      |> api_conn()
+      |> patch_json_api(
+        "/api/orders/#{preorder.id}/allocate-stock",
+        "order",
+        preorder.id,
+        %{}
+      )
+      |> json_response(200)
+
+    assert allocated["data"]["attributes"]["fulfillment_status"] == "ready"
+    assert Ash.reload!(variant, authorize?: false).reserved_quantity == 2
+  end
+
   defp create_order_with_line!(customer, variant, quantity) do
     order = Ash.create!(Order, %{}, actor: customer)
 

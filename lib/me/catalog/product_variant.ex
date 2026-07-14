@@ -46,6 +46,11 @@ defmodule Me.Catalog.ProductVariant do
       public? false
       accept [:quantity_on_hand]
     end
+
+    update :set_reserved_quantity do
+      public? false
+      accept [:reserved_quantity]
+    end
   end
 
   policies do
@@ -91,6 +96,13 @@ defmodule Me.Catalog.ProductVariant do
 
     attribute :quantity_on_hand, :integer do
       allow_nil? false
+      default 0
+      public? true
+    end
+
+    attribute :reserved_quantity, :integer do
+      allow_nil? false
+      constraints min: 0
       default 0
       public? true
     end

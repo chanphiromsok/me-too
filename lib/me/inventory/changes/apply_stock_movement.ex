@@ -15,7 +15,7 @@ defmodule Me.Inventory.Changes.ApplyStockMovement do
 
     with :ok <- validate_direction(delta, reason),
          {:ok, variant} <- lock_variant(variant_id),
-         :ok <- validate_quantity(variant.quantity_on_hand + delta, reason),
+         :ok <- validate_quantity(variant, delta, reason),
          {:ok, _variant} <- update_quantity(variant, variant.quantity_on_hand + delta) do
       changeset
     else
@@ -49,11 +49,19 @@ defmodule Me.Inventory.Changes.ApplyStockMovement do
     end
   end
 
-  defp validate_quantity(new_quantity, reason)
-       when new_quantity < 0 and reason != :adjustment,
+  defp validate_quantity(variant, delta, :sale)
+       when variant.quantity_on_hand + delta < 0,
        do: {:error, "would oversell this variant"}
 
-  defp validate_quantity(_new_quantity, _reason), do: :ok
+  defp validate_quantity(variant, delta, :sale)
+       when variant.quantity_on_hand - variant.reserved_quantity + delta < 0,
+       do: {:error, "would use stock reserved for another order"}
+
+  defp validate_quantity(variant, delta, reason)
+       when variant.quantity_on_hand + delta < 0 and reason != :adjustment,
+       do: {:error, "would oversell this variant"}
+
+  defp validate_quantity(_variant, _delta, _reason), do: :ok
 
   defp update_quantity(variant, quantity) do
     Ash.update(

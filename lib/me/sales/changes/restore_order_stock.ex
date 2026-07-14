@@ -10,7 +10,7 @@ defmodule Me.Sales.Changes.RestoreOrderStock do
   @impl Ash.Resource.Change
   def change(changeset, _opts, context) do
     Ash.Changeset.before_action(changeset, fn changeset ->
-      if changeset.data.status == :pending do
+      if changeset.data.status == :pending and changeset.data.order_kind == :sale do
         OrderLineItem
         |> Ash.Query.filter(order_id == ^changeset.data.id)
         |> Ash.read!(authorize?: false)

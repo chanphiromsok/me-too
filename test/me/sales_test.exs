@@ -135,6 +135,77 @@ defmodule Me.SalesTest do
     assert movement_reasons(variant) == [:restock]
   end
 
+  test "preorder confirmation records demand without changing stock, then allocates and fulfills" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 0, 1_250)
+
+    preorder =
+      customer
+      |> preorder_with_line!(variant, 2)
+      |> Ash.update!(%{}, action: :confirm_preorder, actor: staff)
+
+    assert preorder.status == :pending
+    assert preorder.fulfillment_status == :awaiting_stock
+    assert quantity(variant) == 0
+    assert reserved_quantity(variant) == 0
+    assert movement_reasons(variant) == []
+
+    assert {:error, allocation_error} =
+             Ash.update(preorder, %{}, action: :allocate_preorder, actor: staff)
+
+    assert Exception.message(allocation_error) =~ "only 0 is available"
+
+    Ash.create!(
+      StockMovement,
+      %{product_variant_id: variant.id, quantity: 5},
+      action: :restock,
+      actor: staff
+    )
+
+    ready = Ash.update!(preorder, %{}, action: :allocate_preorder, actor: staff)
+    assert ready.fulfillment_status == :ready
+    assert quantity(variant) == 5
+    assert reserved_quantity(variant) == 2
+
+    fulfilled = Ash.update!(ready, %{}, action: :fulfill, actor: staff)
+    assert fulfilled.status == :fulfilled
+    assert fulfilled.fulfillment_status == :fulfilled
+    assert quantity(variant) == 3
+    assert reserved_quantity(variant) == 0
+    assert movement_reasons(variant) == [:restock, :sale]
+  end
+
+  test "reserved preorder stock cannot be sold and cancellation releases it" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 2, 1_000)
+
+    ready_preorder =
+      customer
+      |> preorder_with_line!(variant, 2)
+      |> Ash.update!(%{}, action: :confirm_preorder, actor: staff)
+      |> Ash.update!(%{}, action: :allocate_preorder, actor: staff)
+
+    sale = order_with_line!(customer, variant, 1)
+    assert {:error, sale_error} = Ash.update(sale, %{}, action: :submit, actor: staff)
+    assert Exception.message(sale_error) =~ "reserved for another order"
+
+    cancelled =
+      Ash.update!(
+        ready_preorder,
+        %{cancel_reason: "Customer changed their mind"},
+        action: :cancel,
+        actor: staff
+      )
+
+    assert cancelled.status == :cancelled
+    assert cancelled.fulfillment_status == :cancelled
+    assert quantity(variant) == 2
+    assert reserved_quantity(variant) == 0
+    assert movement_reasons(variant) == [:restock]
+  end
+
   test "customers cannot discover another customer's order" do
     owner = create_customer!()
     other_customer = create_customer!()
@@ -230,6 +301,25 @@ defmodule Me.SalesTest do
     Ash.reload!(order, authorize?: false)
   end
 
+  defp preorder_with_line!(customer, variant, quantity) do
+    order =
+      Ash.create!(
+        Order,
+        %{order_kind: :preorder, sales_channel: :group_chat},
+        actor: customer
+      )
+
+    _line =
+      Ash.create!(
+        OrderLineItem,
+        %{order_id: order.id, product_variant_id: variant.id, quantity: quantity},
+        action: :add_line_item,
+        actor: customer
+      )
+
+    Ash.reload!(order, authorize?: false)
+  end
+
   defp payment_state(order, actor) do
     order
     |> Ash.reload!(authorize?: false)
@@ -249,6 +339,10 @@ defmodule Me.SalesTest do
     Ash.reload!(variant, authorize?: false).quantity_on_hand
   end
 
+  defp reserved_quantity(variant) do
+    Ash.reload!(variant, authorize?: false).reserved_quantity
+  end
+
   defp create_stocked_variant!(staff, quantity, price) do
     product = Ash.create!(Product, %{name: "Sales Test Product"}, actor: staff)
 
@@ -265,12 +359,14 @@ defmodule Me.SalesTest do
         actor: staff
       )
 
-    Ash.create!(
-      StockMovement,
-      %{product_variant_id: variant.id, quantity: quantity},
-      action: :restock,
-      actor: staff
-    )
+    if quantity > 0 do
+      Ash.create!(
+        StockMovement,
+        %{product_variant_id: variant.id, quantity: quantity},
+        action: :restock,
+        actor: staff
+      )
+    end
 
     variant
   end

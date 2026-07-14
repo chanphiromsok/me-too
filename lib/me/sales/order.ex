@@ -12,7 +12,12 @@ defmodule Me.Sales.Order do
 
     default_fields [
       :order_number,
+      :order_kind,
       :status,
+      :fulfillment_status,
+      :sales_channel,
+      :external_reference,
+      :expected_at,
       :subtotal_cents,
       :discount_cents,
       :total_cents,
@@ -51,6 +56,7 @@ defmodule Me.Sales.Order do
 
     transitions do
       transition :submit, from: :draft, to: :pending
+      transition :confirm_preorder, from: :draft, to: :pending
       transition :fulfill, from: :pending, to: :fulfilled
       transition :cancel, from: [:draft, :pending], to: :cancelled
       transition :return, from: :fulfilled, to: :returned
@@ -66,7 +72,7 @@ defmodule Me.Sales.Order do
 
     create :create do
       primary? true
-      accept []
+      accept [:order_kind, :sales_channel, :external_reference, :expected_at]
       argument :customer_id, :uuid
       change Me.Sales.Changes.SetOrderActors
     end
@@ -78,15 +84,36 @@ defmodule Me.Sales.Order do
     update :submit do
       accept []
       require_atomic? false
+      change {Me.Sales.Changes.EnsureOrderKind, kind: :sale}
       change Me.Sales.Changes.CommitOrderStock
       change transition_state(:pending)
       change set_attribute(:placed_at, &DateTime.utc_now/0)
     end
 
+    update :confirm_preorder do
+      accept []
+      require_atomic? false
+      change {Me.Sales.Changes.EnsureOrderKind, kind: :preorder}
+      change Me.Sales.Changes.EnsureOrderHasLineItems
+      change transition_state(:pending)
+      change set_attribute(:fulfillment_status, :awaiting_stock)
+      change set_attribute(:placed_at, &DateTime.utc_now/0)
+    end
+
+    update :allocate_preorder do
+      accept []
+      require_atomic? false
+      change {Me.Sales.Changes.EnsureOrderKind, kind: :preorder}
+      change Me.Sales.Changes.ReservePreorderStock
+      change set_attribute(:fulfillment_status, :ready)
+    end
+
     update :fulfill do
       accept []
       require_atomic? false
+      change Me.Sales.Changes.CommitPreorderFulfillment
       change transition_state(:fulfilled)
+      change Me.Sales.Changes.MarkFulfillmentCompleted
       change set_attribute(:fulfilled_at, &DateTime.utc_now/0)
     end
 
@@ -94,6 +121,7 @@ defmodule Me.Sales.Order do
       accept [:cancel_reason]
       require_atomic? false
       change Me.Sales.Changes.RestoreOrderStock
+      change Me.Sales.Changes.CancelPreorderFulfillment
       change transition_state(:cancelled)
       change set_attribute(:cancelled_at, &DateTime.utc_now/0)
     end
@@ -144,6 +172,34 @@ defmodule Me.Sales.Order do
       allow_nil? false
       constraints one_of: [:draft, :pending, :fulfilled, :cancelled, :returned]
       default :draft
+      public? true
+    end
+
+    attribute :order_kind, :atom do
+      allow_nil? false
+      constraints one_of: [:sale, :preorder]
+      default :sale
+      public? true
+    end
+
+    attribute :fulfillment_status, :atom do
+      allow_nil? false
+      constraints one_of: [:not_applicable, :awaiting_stock, :ready, :fulfilled, :cancelled]
+      default :not_applicable
+      public? true
+    end
+
+    attribute :sales_channel, :atom do
+      constraints one_of: [:pos, :group_chat, :other]
+      default :pos
+      public? true
+    end
+
+    attribute :external_reference, :string do
+      public? true
+    end
+
+    attribute :expected_at, :utc_datetime_usec do
       public? true
     end
 
