@@ -19,6 +19,16 @@ defmodule MeWeb.Router do
     plug MeWeb.ApiPaginationPlug, max_page_size: 100
   end
 
+  pipeline :health do
+    plug :accepts, ["json"]
+  end
+
+  scope "/", MeWeb do
+    pipe_through :health
+
+    get "/health", HealthController, :show
+  end
+
   scope "/api" do
     pipe_through :browser
 

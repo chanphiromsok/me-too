@@ -1,0 +1,54 @@
+name: me-local
+
+services:
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: me_prod
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d me_prod"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - me_postgres_data:/var/lib/postgresql/data
+
+  api:
+    build:
+      context: .
+      args:
+        FORCE_SSL: "false"
+    command:
+      - /bin/sh
+      - -c
+      - /app/bin/migrate && /app/bin/seed && exec /app/bin/server
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ecto://postgres:${POSTGRES_PASSWORD:-postgres}@db/me_prod
+      PHX_HOST: ${PHX_HOST:-localhost}
+      PHX_SCHEME: http
+      PHX_SERVER: "true"
+      PHX_URL_PORT: ${API_PORT:-4000}
+      POOL_SIZE: ${POOL_SIZE:-10}
+      PORT: "4000"
+      RELEASE_DISTRIBUTION: none
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE:-local-docker-secret-key-base-change-before-production-0123456789abcdef0123456789abcdef}
+      TOKEN_SIGNING_SECRET: ${TOKEN_SIGNING_SECRET:-local-docker-token-signing-secret-change-before-production-0123456789abcdef}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    ports:
+      - "${API_PORT:-4000}:4000"
+    restart: unless-stopped
+
+volumes:
+  me_postgres_data:

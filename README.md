@@ -7,6 +7,43 @@ To start your Phoenix server:
 
 Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
 
+## Run the production release locally with Docker
+
+The Compose stack builds an Elixir release, starts PostgreSQL, runs migrations,
+loads the idempotent demo seed data, and starts the API on port `4000`.
+
+```sh
+docker compose up --build
+```
+
+Verify the release and open the API documentation:
+
+```sh
+curl http://localhost:4000/health
+open http://localhost:4000/api/swaggerui
+```
+
+The seeded staff login is `staff@example.com` / `password123`. PostgreSQL is
+available to the host on port `5433` to avoid conflicting with a development
+database. Override ports when needed:
+
+```sh
+API_PORT=4100 POSTGRES_PORT=5434 docker compose up --build
+```
+
+Useful lifecycle commands:
+
+```sh
+docker compose logs -f api
+docker compose down
+docker compose down -v # also deletes the local Docker database
+```
+
+The checked-in secrets are development-only defaults. Set `SECRET_KEY_BASE`,
+`TOKEN_SIGNING_SECRET`, and `POSTGRES_PASSWORD` in the environment before using
+this image outside local development. Production builds keep HTTPS redirects
+enabled unless the Docker build argument `FORCE_SSL=false` is explicitly used.
+
 Ready to run in production? Please [check our deployment guides](https://phoenix.hexdocs.pm/deployment.html).
 
 ## Credit sales and manual payments
