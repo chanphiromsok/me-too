@@ -79,6 +79,14 @@ defmodule MeWeb.JsonApiRouterTest do
     assert document["paths"]["/api/customers/register"]["post"]
   end
 
+  test "OpenAPI exposes credit payments and receivables routes", %{conn: conn} do
+    document = conn |> get("/api/open-api") |> response(200) |> Jason.decode!()
+
+    assert document["paths"]["/api/orders/{order_id}/payments"]["post"]
+    assert document["paths"]["/api/payments/{id}/void"]["patch"]
+    assert document["paths"]["/api/receivables"]["get"]
+  end
+
   test "staff and customer sign-in use separate paths" do
     staff = create_admin!()
     customer = create_confirmed_customer!()

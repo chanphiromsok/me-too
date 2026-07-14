@@ -13,14 +13,18 @@ defmodule Me.Sales.Order do
     default_fields [
       :order_number,
       :order_kind,
+      :payment_terms,
       :status,
       :fulfillment_status,
       :sales_channel,
       :external_reference,
       :expected_at,
+      :payment_due_at,
       :subtotal_cents,
       :discount_cents,
       :total_cents,
+      :paid_cents,
+      :balance_cents,
       :payment_state,
       :placed_at,
       :fulfilled_at,
@@ -82,7 +86,17 @@ defmodule Me.Sales.Order do
 
     create :create do
       primary? true
-      accept [:order_kind, :sales_channel, :external_reference, :expected_at]
+
+      accept [
+        :order_kind,
+        :payment_terms,
+        :sales_channel,
+        :external_reference,
+        :expected_at,
+        :payment_due_at
+      ]
+
+      change Me.Sales.Changes.EnsureCreditAuthorized
       argument :customer_id, :uuid
       change Me.Sales.Changes.SetOrderActors
     end
@@ -121,6 +135,7 @@ defmodule Me.Sales.Order do
     update :fulfill do
       accept []
       require_atomic? false
+      change Me.Sales.Changes.EnsurePaymentReadyForFulfillment
       change Me.Sales.Changes.CommitPreorderFulfillment
       change transition_state(:fulfilled)
       change Me.Sales.Changes.MarkFulfillmentCompleted
@@ -192,6 +207,13 @@ defmodule Me.Sales.Order do
       public? true
     end
 
+    attribute :payment_terms, :atom do
+      allow_nil? false
+      constraints one_of: [:immediate, :credit]
+      default :immediate
+      public? true
+    end
+
     attribute :fulfillment_status, :atom do
       allow_nil? false
       constraints one_of: [:not_applicable, :awaiting_stock, :ready, :fulfilled, :cancelled]
@@ -210,6 +232,10 @@ defmodule Me.Sales.Order do
     end
 
     attribute :expected_at, :utc_datetime_usec do
+      public? true
+    end
+
+    attribute :payment_due_at, :utc_datetime_usec do
       public? true
     end
 
@@ -282,17 +308,33 @@ defmodule Me.Sales.Order do
     calculate :payment_state,
               :atom,
               expr(
-                if paid_cents == 0 do
-                  :unpaid
+                if total_cents == 0 do
+                  :paid
                 else
-                  if paid_cents < total_cents do
-                    :partially_paid
+                  if paid_cents == 0 do
+                    :unpaid
                   else
-                    :paid
+                    if paid_cents < total_cents do
+                      :partially_paid
+                    else
+                      :paid
+                    end
                   end
                 end
               ) do
       constraints one_of: [:unpaid, :partially_paid, :paid]
+      public? true
+    end
+
+    calculate :balance_cents,
+              :integer,
+              expr(
+                if paid_cents < total_cents do
+                  total_cents - paid_cents
+                else
+                  0
+                end
+              ) do
       public? true
     end
   end

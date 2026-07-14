@@ -33,6 +33,10 @@ defmodule Me.Sales do
       base_route "/payments", Me.Sales.Payment do
         patch :void, route: "/:id/void"
       end
+
+      base_route "/receivables", Me.Sales.Receivable do
+        index :api_index
+      end
     end
   end
 
@@ -40,5 +44,6 @@ defmodule Me.Sales do
     resource Me.Sales.Order
     resource Me.Sales.OrderLineItem
     resource Me.Sales.Payment
+    resource Me.Sales.Receivable
   end
 end

@@ -4,7 +4,7 @@ defmodule Me.SalesTest do
   alias Me.Accounts.{Customer, User}
   alias Me.Catalog.{Product, ProductVariant}
   alias Me.Inventory.{InventoryAllocation, StockMovement}
-  alias Me.Sales.{Order, OrderLineItem, Payment}
+  alias Me.Sales.{Order, OrderLineItem, Payment, Receivable}
 
   @password "password123"
 
@@ -48,7 +48,7 @@ defmodule Me.SalesTest do
     _payment =
       Ash.create!(
         Payment,
-        %{order_id: order.id, amount_cents: 2_500, method: :bank_transfer},
+        %{order_id: order.id, amount_cents: 2_000, method: :bank_transfer},
         action: :record,
         actor: staff
       )
@@ -83,6 +83,7 @@ defmodule Me.SalesTest do
 
     second_order = order_with_line!(customer, variant, 1)
     second_order = Ash.update!(second_order, %{}, action: :submit, actor: customer)
+    _payment = pay_in_full!(second_order, staff)
     fulfilled = Ash.update!(second_order, %{}, action: :fulfill, actor: staff)
 
     assert {:error, %Ash.Error.Invalid{}} =
@@ -95,10 +96,9 @@ defmodule Me.SalesTest do
     variant = create_stocked_variant!(staff, 4, 2_000)
     order = order_with_line!(customer, variant, 2)
 
-    fulfilled =
-      order
-      |> Ash.update!(%{}, action: :submit, actor: customer)
-      |> Ash.update!(%{}, action: :fulfill, actor: staff)
+    submitted = Ash.update!(order, %{}, action: :submit, actor: customer)
+    _payment = pay_in_full!(submitted, staff)
+    fulfilled = Ash.update!(submitted, %{}, action: :fulfill, actor: staff)
 
     assert quantity(variant) == 2
 
@@ -141,8 +141,7 @@ defmodule Me.SalesTest do
     variant = create_stocked_variant!(staff, 0, 1_250)
 
     preorder =
-      customer
-      |> preorder_with_line!(variant, 2)
+      preorder_with_line!(staff, customer, variant, 2)
       |> Ash.update!(%{}, action: :confirm_preorder, actor: staff)
 
     assert preorder.status == :pending
@@ -192,8 +191,7 @@ defmodule Me.SalesTest do
     variant = create_stocked_variant!(staff, 2, 1_000)
 
     ready_preorder =
-      customer
-      |> preorder_with_line!(variant, 2)
+      preorder_with_line!(staff, customer, variant, 2)
       |> Ash.update!(%{}, action: :confirm_preorder, actor: staff)
       |> Ash.update!(%{}, action: :allocate_preorder, actor: staff)
 
@@ -243,7 +241,7 @@ defmodule Me.SalesTest do
     available_variant = create_stocked_variant!(staff, 3, 1_000)
     unavailable_variant = create_stocked_variant!(staff, 1, 2_000)
 
-    preorder = preorder_with_line!(customer, available_variant, 2)
+    preorder = preorder_with_line!(staff, customer, available_variant, 2)
 
     _line =
       Ash.create!(
@@ -278,8 +276,7 @@ defmodule Me.SalesTest do
     variant = create_stocked_variant!(staff, 2, 1_000)
 
     confirmed =
-      customer
-      |> preorder_with_line!(variant, 2)
+      preorder_with_line!(staff, customer, variant, 2)
       |> Ash.update!(%{}, action: :confirm_preorder, actor: staff)
 
     assert {:error, error} = Ash.update(confirmed, %{}, action: :fulfill, actor: staff)
@@ -296,8 +293,7 @@ defmodule Me.SalesTest do
     variant = create_stocked_variant!(staff, 0, 1_000)
 
     confirmed =
-      customer
-      |> preorder_with_line!(variant, 2)
+      preorder_with_line!(staff, customer, variant, 2)
       |> Ash.update!(%{}, action: :confirm_preorder, actor: staff)
 
     cancelled = Ash.update!(confirmed, %{}, action: :cancel, actor: staff)
@@ -317,14 +313,12 @@ defmodule Me.SalesTest do
     variant = create_stocked_variant!(staff, 2, 1_000)
 
     first_preorder =
-      first_customer
-      |> preorder_with_line!(variant, 2)
+      preorder_with_line!(staff, first_customer, variant, 2)
       |> Ash.update!(%{}, action: :confirm_preorder, actor: staff)
       |> Ash.update!(%{}, action: :allocate_preorder, actor: staff)
 
     second_preorder =
-      second_customer
-      |> preorder_with_line!(variant, 2)
+      preorder_with_line!(staff, second_customer, variant, 2)
       |> Ash.update!(%{}, action: :confirm_preorder, actor: staff)
 
     assert {:error, error} =
@@ -499,6 +493,102 @@ defmodule Me.SalesTest do
     assert Exception.message(cancelled_error) =~ "order is not open for payment"
   end
 
+  test "credit authorization, receivables, partial payments, and fulfillment stay consistent" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 3, 1_000)
+    due_at = DateTime.add(DateTime.utc_now(), -3_600, :second)
+
+    assert {:error, unauthorized_error} =
+             Ash.create(Order, %{payment_terms: :credit}, actor: customer)
+
+    assert Exception.message(unauthorized_error) =~ "credit can only be approved by active staff"
+
+    order =
+      Ash.create!(
+        Order,
+        %{customer_id: customer.id, payment_terms: :credit, payment_due_at: due_at},
+        actor: staff
+      )
+
+    _line =
+      Ash.create!(
+        OrderLineItem,
+        %{order_id: order.id, product_variant_id: variant.id, quantity: 2},
+        action: :add_line_item,
+        actor: staff
+      )
+
+    submitted =
+      order
+      |> Ash.reload!(authorize?: false)
+      |> Ash.update!(%{}, action: :submit, actor: staff)
+
+    [receivable] = Ash.read!(Receivable, actor: staff)
+    assert receivable.id == order.id
+    assert receivable.total_cents == 2_000
+    assert receivable.paid_cents == 0
+    assert receivable.balance_cents == 2_000
+    assert receivable.customer_balance_cents == 2_000
+    assert receivable.customer_unpaid_order_count == 1
+    assert receivable.portfolio_balance_cents == 2_000
+    assert receivable.overdue
+
+    payment =
+      Ash.create!(
+        Payment,
+        %{order_id: order.id, amount_cents: 750, method: :bank_transfer},
+        action: :record,
+        actor: staff
+      )
+
+    [receivable] = Ash.read!(Receivable, actor: staff)
+    assert receivable.paid_cents == 750
+    assert receivable.balance_cents == 1_250
+
+    assert {:error, overpayment_error} =
+             Ash.create(
+               Payment,
+               %{order_id: order.id, amount_cents: 1_251, method: :cash},
+               action: :record,
+               actor: staff
+             )
+
+    assert Exception.message(overpayment_error) =~ "cannot exceed the remaining balance"
+    assert Ash.read!(Receivable, actor: staff) |> hd() |> Map.fetch!(:balance_cents) == 1_250
+
+    fulfilled = Ash.update!(submitted, %{}, action: :fulfill, actor: staff)
+    assert fulfilled.status == :fulfilled
+
+    _voided = Ash.update!(payment, %{}, action: :void, actor: staff)
+    assert Ash.read!(Receivable, actor: staff) |> hd() |> Map.fetch!(:balance_cents) == 2_000
+
+    _paid =
+      Ash.create!(
+        Payment,
+        %{order_id: order.id, amount_cents: 2_000, method: :cash},
+        action: :record,
+        actor: staff
+      )
+
+    assert Ash.read!(Receivable, actor: staff) == []
+  end
+
+  test "an immediate-payment order cannot be fulfilled with an unpaid balance" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 1, 1_000)
+
+    submitted =
+      customer
+      |> order_with_line!(variant, 1)
+      |> Ash.update!(%{}, action: :submit, actor: customer)
+
+    assert {:error, error} = Ash.update(submitted, %{}, action: :fulfill, actor: staff)
+    assert Exception.message(error) =~ "must be paid in full"
+    assert Ash.reload!(submitted, authorize?: false).status == :pending
+  end
+
   test "a discount cannot make the order total negative" do
     staff = create_staff!()
     customer = create_customer!()
@@ -536,12 +626,17 @@ defmodule Me.SalesTest do
     Ash.reload!(order, authorize?: false)
   end
 
-  defp preorder_with_line!(customer, variant, quantity) do
+  defp preorder_with_line!(staff, customer, variant, quantity) do
     order =
       Ash.create!(
         Order,
-        %{order_kind: :preorder, sales_channel: :group_chat},
-        actor: customer
+        %{
+          customer_id: customer.id,
+          order_kind: :preorder,
+          payment_terms: :credit,
+          sales_channel: :group_chat
+        },
+        actor: staff
       )
 
     _line =
@@ -549,7 +644,7 @@ defmodule Me.SalesTest do
         OrderLineItem,
         %{order_id: order.id, product_variant_id: variant.id, quantity: quantity},
         action: :add_line_item,
-        actor: customer
+        actor: staff
       )
 
     Ash.reload!(order, authorize?: false)
@@ -560,6 +655,17 @@ defmodule Me.SalesTest do
     |> Ash.reload!(authorize?: false)
     |> Ash.load!([:total_cents, :paid_cents, :payment_state], actor: actor)
     |> Map.fetch!(:payment_state)
+  end
+
+  defp pay_in_full!(order, staff) do
+    loaded_order = Ash.load!(order, [:balance_cents], authorize?: false)
+
+    Ash.create!(
+      Payment,
+      %{order_id: order.id, amount_cents: loaded_order.balance_cents, method: :cash},
+      action: :record,
+      actor: staff
+    )
   end
 
   defp movement_reasons(variant) do

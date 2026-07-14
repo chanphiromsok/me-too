@@ -70,6 +70,7 @@ defmodule MeWeb.SalesApiTest do
 
     valid_order = create_order_with_line!(customer, variant, 1)
     submitted = Ash.update!(valid_order, %{}, action: :submit, actor: customer)
+    _payment = pay_in_full!(submitted, staff)
     fulfilled = Ash.update!(submitted, %{}, action: :fulfill, actor: staff)
 
     illegal =
@@ -85,10 +86,9 @@ defmodule MeWeb.SalesApiTest do
     variant = create_stocked_variant!(staff, 2)
     order = create_order_with_line!(customer, variant, 1)
 
-    fulfilled =
-      order
-      |> Ash.update!(%{}, action: :submit, actor: customer)
-      |> Ash.update!(%{}, action: :fulfill, actor: staff)
+    submitted = Ash.update!(order, %{}, action: :submit, actor: customer)
+    _payment = pay_in_full!(submitted, staff)
+    fulfilled = Ash.update!(submitted, %{}, action: :fulfill, actor: staff)
 
     response =
       staff
@@ -114,7 +114,12 @@ defmodule MeWeb.SalesApiTest do
     preorder =
       Ash.create!(
         Order,
-        %{customer_id: customer.id, order_kind: :preorder, sales_channel: :group_chat},
+        %{
+          customer_id: customer.id,
+          order_kind: :preorder,
+          payment_terms: :credit,
+          sales_channel: :group_chat
+        },
         actor: staff
       )
 
@@ -163,7 +168,12 @@ defmodule MeWeb.SalesApiTest do
     preorder =
       Ash.create!(
         Order,
-        %{customer_id: customer.id, order_kind: :preorder, sales_channel: :group_chat},
+        %{
+          customer_id: customer.id,
+          order_kind: :preorder,
+          payment_terms: :credit,
+          sales_channel: :group_chat
+        },
         actor: staff
       )
 
@@ -303,6 +313,91 @@ defmodule MeWeb.SalesApiTest do
            |> json_response(400)
   end
 
+  test "staff records partial credit payments and reads the receivables report" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 2)
+
+    order =
+      Ash.create!(
+        Order,
+        %{customer_id: customer.id, payment_terms: :credit},
+        actor: staff
+      )
+
+    _line =
+      Ash.create!(
+        Me.Sales.OrderLineItem,
+        %{order_id: order.id, product_variant_id: variant.id, quantity: 2},
+        action: :add_line_item,
+        actor: staff
+      )
+
+    _submitted =
+      order
+      |> Ash.reload!(authorize?: false)
+      |> Ash.update!(%{}, action: :submit, actor: staff)
+
+    report =
+      staff
+      |> api_conn()
+      |> get("/api/receivables")
+      |> json_response(200)
+
+    assert [%{"id" => order_id, "attributes" => attributes}] = report["data"]
+    assert order_id == order.id
+    assert attributes["total_cents"] == 2_000
+    assert attributes["paid_cents"] == 0
+    assert attributes["balance_cents"] == 2_000
+
+    forbidden_report = customer |> api_conn() |> get("/api/receivables")
+    assert json_response(forbidden_report, 403)["errors"]
+
+    overpayment =
+      staff
+      |> api_conn()
+      |> post_json_api("/api/orders/#{order.id}/payments", "payment", %{
+        amount_cents: 2_001,
+        method: "cash"
+      })
+
+    assert json_response(overpayment, 400)["errors"]
+
+    payment =
+      staff
+      |> api_conn()
+      |> post_json_api("/api/orders/#{order.id}/payments", "payment", %{
+        amount_cents: 750,
+        method: "bank_transfer",
+        note: "Verified manually"
+      })
+      |> json_response(201)
+
+    assert payment["data"]["attributes"]["amount_cents"] == 750
+
+    [updated] =
+      staff
+      |> api_conn()
+      |> get("/api/receivables")
+      |> json_response(200)
+      |> Map.fetch!("data")
+
+    assert updated["attributes"]["paid_cents"] == 750
+    assert updated["attributes"]["balance_cents"] == 1_250
+  end
+
+  test "a customer cannot grant credit to their own order" do
+    customer = create_customer!()
+
+    response =
+      customer
+      |> api_conn()
+      |> post_json_api("/api/orders", "order", %{payment_terms: "credit"})
+
+    assert json_response(response, 400)["errors"]
+    assert Ash.read!(Order, actor: customer) == []
+  end
+
   defp create_order_with_line!(customer, variant, quantity) do
     order = Ash.create!(Order, %{}, actor: customer)
 
@@ -341,6 +436,17 @@ defmodule MeWeb.SalesApiTest do
     )
 
     variant
+  end
+
+  defp pay_in_full!(order, staff) do
+    loaded_order = Ash.load!(order, [:balance_cents], authorize?: false)
+
+    Ash.create!(
+      Payment,
+      %{order_id: order.id, amount_cents: loaded_order.balance_cents, method: :cash},
+      action: :record,
+      actor: staff
+    )
   end
 
   defp api_conn(actor) do
