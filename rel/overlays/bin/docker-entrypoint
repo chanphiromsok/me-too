@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+/app/bin/migrate
+/app/bin/seed
+
+if [ "$#" -eq 0 ]; then
+  set -- /app/bin/server
+fi
+
+exec "$@"
