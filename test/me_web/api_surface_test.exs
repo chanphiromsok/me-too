@@ -8,6 +8,16 @@ defmodule MeWeb.ApiSurfaceTest do
 
   @password "password123"
 
+  test "serves API documentation without exposing the generated home page", %{conn: conn} do
+    swagger_response = get(conn, "/api/swaggerui")
+
+    assert html_response(swagger_response, 200) =~ "SwaggerUIBundle"
+
+    assert json_response(get(build_conn(), "/"), 404) == %{
+             "errors" => %{"detail" => "Not Found"}
+           }
+  end
+
   test "filtering, sorting, and receipt includes work for customer flows" do
     fixture = create_fixture!()
 

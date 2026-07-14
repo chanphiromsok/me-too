@@ -74,33 +74,6 @@ defmodule Me.Accounts.User do
       end
     end
 
-    read :sign_in_with_token do
-      # In the generated sign in components, we validate the
-      # email and password directly in the LiveView
-      # and generate a short-lived token that can be used to sign in over
-      # a standard controller action, exchanging it for a standard token.
-      # This action performs that exchange. If you do not use the generated
-      # liveviews, you may remove this action, and set
-      # `sign_in_tokens_enabled? false` in the password strategy.
-
-      description "Attempt to sign in using a short-lived sign in token."
-      get? true
-
-      argument :token, :string do
-        description "The short-lived sign in token."
-        allow_nil? false
-        sensitive? true
-      end
-
-      # validates the provided sign in token and generates a token
-      prepare AshAuthentication.Strategy.Password.SignInWithTokenPreparation
-
-      metadata :token, :string do
-        description "A JWT that can be used to authenticate the user."
-        allow_nil? false
-      end
-    end
-
     create :register_with_password do
       description "Register a new user with a email and password."
 
@@ -230,6 +203,7 @@ defmodule Me.Accounts.User do
       password :password do
         identity_field :email
         hash_provider AshAuthentication.BcryptProvider
+        sign_in_tokens_enabled? false
       end
 
       remember_me :remember_me

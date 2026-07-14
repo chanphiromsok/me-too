@@ -11,6 +11,6 @@
     :phoenix
   ],
   subdirectories: ["priv/*/migrations"],
-  plugins: [Spark.Formatter, Phoenix.LiveView.HTMLFormatter],
-  inputs: ["*.{heex,ex,exs}", "{config,lib,test}/**/*.{heex,ex,exs}", "priv/*/seeds.exs"]
+  plugins: [Spark.Formatter],
+  inputs: ["*.{ex,exs}", "{config,lib,test}/**/*.{ex,exs}", "priv/*/seeds.exs"]
 ]
