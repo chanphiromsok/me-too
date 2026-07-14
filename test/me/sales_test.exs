@@ -237,6 +237,116 @@ defmodule Me.SalesTest do
     assert is_nil(released_allocation.consumed_at)
   end
 
+  test "a multi-line preorder allocation is all-or-nothing" do
+    staff = create_staff!()
+    customer = create_customer!()
+    available_variant = create_stocked_variant!(staff, 3, 1_000)
+    unavailable_variant = create_stocked_variant!(staff, 1, 2_000)
+
+    preorder = preorder_with_line!(customer, available_variant, 2)
+
+    _line =
+      Ash.create!(
+        OrderLineItem,
+        %{
+          order_id: preorder.id,
+          product_variant_id: unavailable_variant.id,
+          quantity: 2
+        },
+        action: :add_line_item,
+        actor: customer
+      )
+
+    confirmed =
+      preorder
+      |> Ash.reload!(authorize?: false)
+      |> Ash.update!(%{}, action: :confirm_preorder, actor: staff)
+
+    assert {:error, error} =
+             Ash.update(confirmed, %{}, action: :allocate_preorder, actor: staff)
+
+    assert Exception.message(error) =~ "only 1 is available"
+    assert Ash.reload!(confirmed, authorize?: false).fulfillment_status == :awaiting_stock
+    assert reserved_quantity(available_variant) == 0
+    assert reserved_quantity(unavailable_variant) == 0
+    assert Ash.read!(InventoryAllocation, authorize?: false) == []
+  end
+
+  test "a preorder cannot fulfill before stock is allocated" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 2, 1_000)
+
+    confirmed =
+      customer
+      |> preorder_with_line!(variant, 2)
+      |> Ash.update!(%{}, action: :confirm_preorder, actor: staff)
+
+    assert {:error, error} = Ash.update(confirmed, %{}, action: :fulfill, actor: staff)
+    assert Exception.message(error) =~ "must be ready"
+    assert Ash.reload!(confirmed, authorize?: false).status == :pending
+    assert quantity(variant) == 2
+    assert reserved_quantity(variant) == 0
+    assert movement_reasons(variant) == [:restock]
+  end
+
+  test "cancelling a preorder awaiting stock does not create inventory activity" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 0, 1_000)
+
+    confirmed =
+      customer
+      |> preorder_with_line!(variant, 2)
+      |> Ash.update!(%{}, action: :confirm_preorder, actor: staff)
+
+    cancelled = Ash.update!(confirmed, %{}, action: :cancel, actor: staff)
+
+    assert cancelled.status == :cancelled
+    assert cancelled.fulfillment_status == :cancelled
+    assert quantity(variant) == 0
+    assert reserved_quantity(variant) == 0
+    assert movement_reasons(variant) == []
+    assert Ash.read!(InventoryAllocation, authorize?: false) == []
+  end
+
+  test "competing preorders cannot reserve the same stock and released stock becomes available" do
+    staff = create_staff!()
+    first_customer = create_customer!()
+    second_customer = create_customer!()
+    variant = create_stocked_variant!(staff, 2, 1_000)
+
+    first_preorder =
+      first_customer
+      |> preorder_with_line!(variant, 2)
+      |> Ash.update!(%{}, action: :confirm_preorder, actor: staff)
+      |> Ash.update!(%{}, action: :allocate_preorder, actor: staff)
+
+    second_preorder =
+      second_customer
+      |> preorder_with_line!(variant, 2)
+      |> Ash.update!(%{}, action: :confirm_preorder, actor: staff)
+
+    assert {:error, error} =
+             Ash.update(second_preorder, %{}, action: :allocate_preorder, actor: staff)
+
+    assert Exception.message(error) =~ "only 0 is available"
+    assert reserved_quantity(variant) == 2
+
+    _cancelled = Ash.update!(first_preorder, %{}, action: :cancel, actor: staff)
+    assert reserved_quantity(variant) == 0
+
+    second_ready =
+      Ash.update!(second_preorder, %{}, action: :allocate_preorder, actor: staff)
+
+    assert second_ready.fulfillment_status == :ready
+    assert reserved_quantity(variant) == 2
+
+    allocations = Ash.read!(InventoryAllocation, authorize?: false)
+    assert Enum.count(allocations, &(&1.status == :released)) == 1
+    assert Enum.count(allocations, &(&1.status == :reserved)) == 1
+  end
+
   test "customers cannot discover another customer's order" do
     owner = create_customer!()
     other_customer = create_customer!()

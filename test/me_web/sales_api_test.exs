@@ -131,6 +131,90 @@ defmodule MeWeb.SalesApiTest do
     assert Ash.reload!(variant, authorize?: false).reserved_quantity == 2
   end
 
+  test "preorder API rejects out-of-order and repeated lifecycle requests without duplicating stock" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 2)
+
+    preorder =
+      Ash.create!(
+        Order,
+        %{customer_id: customer.id, order_kind: :preorder, sales_channel: :group_chat},
+        actor: staff
+      )
+
+    _line =
+      Ash.create!(
+        Me.Sales.OrderLineItem,
+        %{order_id: preorder.id, product_variant_id: variant.id, quantity: 2},
+        action: :add_line_item,
+        actor: staff
+      )
+
+    allocate_before_confirmation =
+      staff
+      |> api_conn()
+      |> patch_json_api(
+        "/api/orders/#{preorder.id}/allocate-stock",
+        "order",
+        preorder.id,
+        %{}
+      )
+
+    assert json_response(allocate_before_confirmation, 400)["errors"]
+    assert Ash.reload!(variant, authorize?: false).reserved_quantity == 0
+
+    confirm_path = "/api/orders/#{preorder.id}/confirm-preorder"
+
+    assert staff
+           |> api_conn()
+           |> patch_json_api(confirm_path, "order", preorder.id, %{})
+           |> json_response(200)
+
+    assert staff
+           |> api_conn()
+           |> patch_json_api(confirm_path, "order", preorder.id, %{})
+           |> json_response(409)
+
+    fulfill_before_allocation =
+      staff
+      |> api_conn()
+      |> patch_json_api("/api/orders/#{preorder.id}/fulfill", "order", preorder.id, %{})
+
+    assert json_response(fulfill_before_allocation, 400)["errors"]
+    assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 2
+
+    allocation_path = "/api/orders/#{preorder.id}/allocate-stock"
+
+    assert staff
+           |> api_conn()
+           |> patch_json_api(allocation_path, "order", preorder.id, %{})
+           |> json_response(200)
+
+    assert staff
+           |> api_conn()
+           |> patch_json_api(allocation_path, "order", preorder.id, %{})
+           |> json_response(400)
+
+    assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 2
+    assert Ash.reload!(variant, authorize?: false).reserved_quantity == 2
+
+    fulfill_path = "/api/orders/#{preorder.id}/fulfill"
+
+    assert staff
+           |> api_conn()
+           |> patch_json_api(fulfill_path, "order", preorder.id, %{})
+           |> json_response(200)
+
+    assert staff
+           |> api_conn()
+           |> patch_json_api(fulfill_path, "order", preorder.id, %{})
+           |> json_response(409)
+
+    assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 0
+    assert Ash.reload!(variant, authorize?: false).reserved_quantity == 0
+  end
+
   defp create_order_with_line!(customer, variant, quantity) do
     order = Ash.create!(Order, %{}, actor: customer)
 
