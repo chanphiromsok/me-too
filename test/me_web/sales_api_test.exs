@@ -215,6 +215,51 @@ defmodule MeWeb.SalesApiTest do
     assert Ash.reload!(variant, authorize?: false).reserved_quantity == 0
   end
 
+  test "payment API rejects draft orders and repeated void requests" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 1)
+    order = create_order_with_line!(customer, variant, 1)
+
+    payment_attributes = %{amount_cents: 1_000, method: "cash"}
+
+    draft_payment =
+      staff
+      |> api_conn()
+      |> post_json_api(
+        "/api/orders/#{order.id}/payments",
+        "payment",
+        payment_attributes
+      )
+
+    assert json_response(draft_payment, 400)["errors"]
+
+    _submitted = Ash.update!(order, %{}, action: :submit, actor: customer)
+
+    payment =
+      staff
+      |> api_conn()
+      |> post_json_api(
+        "/api/orders/#{order.id}/payments",
+        "payment",
+        payment_attributes
+      )
+      |> json_response(201)
+
+    payment_id = payment["data"]["id"]
+    void_path = "/api/payments/#{payment_id}/void"
+
+    assert staff
+           |> api_conn()
+           |> patch_json_api(void_path, "payment", payment_id, %{})
+           |> json_response(200)
+
+    assert staff
+           |> api_conn()
+           |> patch_json_api(void_path, "payment", payment_id, %{})
+           |> json_response(400)
+  end
+
   defp create_order_with_line!(customer, variant, quantity) do
     order = Ash.create!(Order, %{}, actor: customer)
 
@@ -271,6 +316,14 @@ defmodule MeWeb.SalesApiTest do
       conn,
       path,
       Jason.encode!(%{data: %{type: type, id: id, attributes: attributes}})
+    )
+  end
+
+  defp post_json_api(conn, path, type, attributes) do
+    post(
+      conn,
+      path,
+      Jason.encode!(%{data: %{type: type, attributes: attributes}})
     )
   end
 

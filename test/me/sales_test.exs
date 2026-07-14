@@ -465,6 +465,40 @@ defmodule Me.SalesTest do
     assert payment_state(order, customer) == :unpaid
   end
 
+  test "payments require an open order and can only be voided once" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 2, 1_000)
+    draft_order = order_with_line!(customer, variant, 1)
+
+    payment_attrs = %{order_id: draft_order.id, amount_cents: 1_000, method: :cash}
+
+    assert {:error, draft_error} =
+             Ash.create(Payment, payment_attrs, action: :record, actor: staff)
+
+    assert Exception.message(draft_error) =~ "order is not open for payment"
+
+    submitted = Ash.update!(draft_order, %{}, action: :submit, actor: customer)
+    payment = Ash.create!(Payment, payment_attrs, action: :record, actor: staff)
+    voided = Ash.update!(payment, %{}, action: :void, actor: staff)
+
+    assert {:error, void_error} = Ash.update(voided, %{}, action: :void, actor: staff)
+    assert Exception.message(void_error) =~ "payment has already been voided"
+    assert Ash.reload!(payment, authorize?: false).voided_at == voided.voided_at
+
+    cancelled = Ash.update!(submitted, %{}, action: :cancel, actor: staff)
+
+    assert {:error, cancelled_error} =
+             Ash.create(
+               Payment,
+               %{payment_attrs | order_id: cancelled.id},
+               action: :record,
+               actor: staff
+             )
+
+    assert Exception.message(cancelled_error) =~ "order is not open for payment"
+  end
+
   test "a discount cannot make the order total negative" do
     staff = create_staff!()
     customer = create_customer!()

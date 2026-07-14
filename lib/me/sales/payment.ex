@@ -29,11 +29,14 @@ defmodule Me.Sales.Payment do
       argument :order_id, :uuid, allow_nil?: false
 
       change set_attribute(:order_id, arg(:order_id))
+      change Me.Sales.Changes.EnsurePayableOrder
       change relate_actor(:recorded_by)
     end
 
     update :void do
       accept []
+      require_atomic? false
+      change Me.Sales.Changes.EnsurePaymentActive
       change set_attribute(:voided_at, &DateTime.utc_now/0)
     end
   end
