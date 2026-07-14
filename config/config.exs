@@ -74,7 +74,8 @@ config :me, MeWeb.Endpoint,
     formats: [json: MeWeb.ErrorJSON],
     layout: false
   ],
-  pubsub_server: Me.PubSub
+  pubsub_server: Me.PubSub,
+  live_view: [signing_salt: "NRa95Cgl"]
 
 # Configure the mailer
 #

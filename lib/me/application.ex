@@ -8,6 +8,7 @@ defmodule Me.Application do
   @impl true
   def start(_type, _args) do
     children = [
+      MeWeb.Telemetry,
       Me.Repo,
       {DNSCluster, query: Application.get_env(:me, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Me.PubSub},

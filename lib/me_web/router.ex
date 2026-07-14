@@ -8,6 +8,13 @@ defmodule MeWeb.Router do
     plug :put_secure_browser_headers
   end
 
+  pipeline :dashboard do
+    plug :accepts, ["html"]
+    plug :fetch_session
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
+  end
+
   pipeline :api do
     plug :accepts, ["json"]
     plug :load_from_bearer
@@ -41,8 +48,16 @@ defmodule MeWeb.Router do
     forward "/", MeWeb.AshJsonApiRouter
   end
 
-  # Enable the Swoosh mailbox preview in development.
+  # Enable operational tools in development.
   if Application.compile_env(:me, :dev_routes) do
+    import Phoenix.LiveDashboard.Router
+
+    scope "/dev" do
+      pipe_through :dashboard
+
+      live_dashboard "/dashboard", metrics: MeWeb.Telemetry
+    end
+
     scope "/dev" do
       pipe_through :docs
 
