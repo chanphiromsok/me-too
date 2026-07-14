@@ -378,6 +378,51 @@ defmodule Me.SalesTest do
              )
   end
 
+  test "inactive variants and archived products cannot be added from stale product results" do
+    staff = create_staff!()
+    admin = create_staff!(role: :admin)
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 2, 1_000)
+    inactive_variant = Ash.update!(variant, %{active: false}, actor: staff)
+    order = Ash.create!(Order, %{}, actor: customer)
+
+    assert {:error, error} =
+             Ash.create(
+               OrderLineItem,
+               %{
+                 order_id: order.id,
+                 product_variant_id: inactive_variant.id,
+                 quantity: 1
+               },
+               action: :add_line_item,
+               actor: customer
+             )
+
+    assert Exception.message(error) =~ "is not available for sale"
+    assert Ash.read!(OrderLineItem, actor: customer) == []
+    assert Ash.reload!(order, authorize?: false).subtotal_cents == 0
+
+    archived_variant = create_stocked_variant!(staff, 2, 1_000)
+    product = Ash.get!(Product, archived_variant.product_id, authorize?: false)
+    _archived_product = Ash.update!(product, %{}, action: :archive, actor: admin)
+
+    assert {:error, error} =
+             Ash.create(
+               OrderLineItem,
+               %{
+                 order_id: order.id,
+                 product_variant_id: archived_variant.id,
+                 quantity: 1
+               },
+               action: :add_line_item,
+               actor: customer
+             )
+
+    assert Exception.message(error) =~ "is not available for sale"
+    assert Ash.read!(OrderLineItem, actor: customer) == []
+    assert Ash.reload!(order, authorize?: false).subtotal_cents == 0
+  end
+
   test "adding the same variant upserts quantity without changing the snapshotted price" do
     staff = create_staff!()
     customer = create_customer!()
@@ -518,12 +563,15 @@ defmodule Me.SalesTest do
     variant
   end
 
-  defp create_staff! do
+  defp create_staff!(opts \\ []) do
+    role = Keyword.get(opts, :role, :staff)
+
     Ash.create!(
       User,
       %{
-        name: "Sales Test Staff",
-        email: unique_email("staff"),
+        name: "Sales Test #{role}",
+        email: unique_email(to_string(role)),
+        role: role,
         password: @password,
         password_confirmation: @password
       },
