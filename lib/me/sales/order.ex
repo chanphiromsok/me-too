@@ -277,7 +277,7 @@ defmodule Me.Sales.Order do
       public? true
     end
 
-    timestamps()
+    timestamps public?: true
   end
 
   relationships do

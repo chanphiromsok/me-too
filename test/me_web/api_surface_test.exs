@@ -33,6 +33,32 @@ defmodule MeWeb.ApiSurfaceTest do
 
     assert Enum.map(history["data"], & &1["id"]) == [fixture.order.id]
 
+    pending_query = URI.encode_query(%{"filter[status]" => "pending", "sort" => "-inserted_at"})
+
+    pending_orders =
+      fixture.staff
+      |> api_conn()
+      |> get("/api/orders?#{pending_query}")
+      |> json_response(200)
+
+    assert pending_orders["data"] != []
+
+    assert Enum.all?(
+             pending_orders["data"],
+             &(&1["attributes"]["status"] == "pending")
+           )
+
+    sorted_orders =
+      fixture.staff
+      |> api_conn()
+      |> get("/api/orders?sort=-inserted_at")
+      |> json_response(200)
+
+    inserted_at_values =
+      Enum.map(sorted_orders["data"], & &1["attributes"]["inserted_at"])
+
+    assert inserted_at_values == Enum.sort(inserted_at_values, :desc)
+
     receipt_query =
       URI.encode_query(%{"include" => "customer,line_items.product_variant,payments"})
 
