@@ -306,5 +306,6 @@ defmodule Me.Sales.Order do
 
   identities do
     identity :unique_order_number, [:order_number]
+    identity :unique_external_reference, [:external_reference]
   end
 end

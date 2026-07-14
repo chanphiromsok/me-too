@@ -4,7 +4,7 @@ defmodule MeWeb.SalesApiTest do
   alias Me.Accounts.{Customer, User}
   alias Me.Catalog.{Product, ProductVariant}
   alias Me.Inventory.StockMovement
-  alias Me.Sales.Order
+  alias Me.Sales.{Order, Payment}
 
   @password "password123"
 
@@ -20,6 +20,30 @@ defmodule MeWeb.SalesApiTest do
       |> json_response(201)
 
     assert order["data"]["attributes"]["status"] == "draft"
+  end
+
+  test "client references prevent duplicate orders after a retried request" do
+    customer = create_customer!()
+    external_reference = "mobile-order-#{System.unique_integer([:positive])}"
+    attributes = %{external_reference: external_reference}
+
+    first_response =
+      customer
+      |> api_conn()
+      |> post_json_api("/api/orders", "order", attributes)
+
+    assert json_response(first_response, 201)["data"]["attributes"]["external_reference"] ==
+             external_reference
+
+    retried_response =
+      customer
+      |> api_conn()
+      |> post_json_api("/api/orders", "order", attributes)
+
+    assert json_response(retried_response, 400)["errors"]
+
+    orders = Ash.read!(Order, actor: customer)
+    assert Enum.count(orders, &(&1.external_reference == external_reference)) == 1
   end
 
   test "cross-customer order probes return 404" do
@@ -221,7 +245,13 @@ defmodule MeWeb.SalesApiTest do
     variant = create_stocked_variant!(staff, 1)
     order = create_order_with_line!(customer, variant, 1)
 
-    payment_attributes = %{amount_cents: 1_000, method: "cash"}
+    payment_reference = "mobile-payment-#{System.unique_integer([:positive])}"
+
+    payment_attributes = %{
+      amount_cents: 1_000,
+      method: "cash",
+      external_reference: payment_reference
+    }
 
     draft_payment =
       staff
@@ -247,6 +277,19 @@ defmodule MeWeb.SalesApiTest do
       |> json_response(201)
 
     payment_id = payment["data"]["id"]
+
+    retried_payment =
+      staff
+      |> api_conn()
+      |> post_json_api(
+        "/api/orders/#{order.id}/payments",
+        "payment",
+        payment_attributes
+      )
+
+    assert json_response(retried_payment, 400)["errors"]
+    assert Enum.count(Ash.read!(Payment, authorize?: false)) == 1
+
     void_path = "/api/payments/#{payment_id}/void"
 
     assert staff

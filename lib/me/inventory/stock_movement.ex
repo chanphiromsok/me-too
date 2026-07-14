@@ -169,4 +169,9 @@ defmodule Me.Inventory.StockMovement do
       public? true
     end
   end
+
+  identities do
+    identity :unique_reference,
+             [:product_variant_id, :reason, :reference_type, :reference_id]
+  end
 end

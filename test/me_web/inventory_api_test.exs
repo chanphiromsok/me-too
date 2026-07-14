@@ -41,6 +41,21 @@ defmodule MeWeb.InventoryApiTest do
     assert json_response(generic, 404)["errors"]
   end
 
+  test "a client reference prevents a retried restock from adding stock twice" do
+    staff = create_staff!()
+    variant = create_variant!(staff)
+    reference_id = Ecto.UUID.generate()
+
+    attributes = [reference_type: "mobile", reference_id: reference_id]
+
+    first_restock = movement_request(staff, variant, "restock", 5, attributes)
+    assert json_response(first_restock, 201)["data"]["attributes"]["delta"] == 5
+
+    retried_restock = movement_request(staff, variant, "restock", 5, attributes)
+    assert json_response(retried_restock, 400)["errors"]
+    assert Ash.reload!(variant, authorize?: false).quantity_on_hand == 5
+  end
+
   defp movement_request(staff, variant, action, quantity, opts \\ []) do
     attributes =
       %{quantity: quantity, note: "API test"}
