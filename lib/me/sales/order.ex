@@ -99,6 +99,7 @@ defmodule Me.Sales.Order do
       change Me.Sales.Changes.EnsureCreditAuthorized
       argument :customer_id, :uuid
       change Me.Sales.Changes.SetOrderActors
+      change Me.Sales.Changes.EnsureCustomerCanOrder
     end
 
     update :set_discount do

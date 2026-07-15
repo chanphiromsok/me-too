@@ -3,6 +3,7 @@ defmodule Me.AccountsTest do
 
   alias AshAuthentication.Jwt
   alias Me.Accounts.{Customer, User}
+  alias Me.Sales.Order
 
   @password "password123"
 
@@ -20,8 +21,8 @@ defmodule Me.AccountsTest do
     refute match?({:ok, %User{}}, sign_in(User, staff.email))
   end
 
-  test "customer registration remains pending until an admin confirms it" do
-    admin = create_staff!(role: :admin)
+  test "staff can approve, suspend, and return a customer to review" do
+    staff = create_staff!()
     email = unique_email("customer")
 
     assert {:ok, customer} =
@@ -41,21 +42,50 @@ defmodule Me.AccountsTest do
     assert customer.hashed_password
     refute customer.hashed_password == @password
     assert is_nil(customer.confirmed_at)
+    assert customer.status == :needs_approval
     refute match?({:ok, %Customer{}}, sign_in(Customer, email))
 
-    assert {:error, %Ash.Error.Forbidden{}} =
-             Ash.update(customer, %{}, action: :confirm, actor: create_staff!())
-
     assert {:ok, confirmed_customer} =
-             Ash.update(customer, %{}, action: :confirm, actor: admin)
+             Ash.update(customer, %{}, action: :confirm, actor: staff)
 
     assert %DateTime{} = confirmed_customer.confirmed_at
+    assert confirmed_customer.status == :approved
 
     assert {:ok, signed_in_customer} = sign_in(Customer, email)
     assert is_binary(signed_in_customer.__metadata__.token)
 
     assert {:ok, _claims, Customer} =
              Jwt.verify(signed_in_customer.__metadata__.token, Customer)
+
+    assert {:ok, suspended_customer} =
+             Ash.update(confirmed_customer, %{}, action: :suspend, actor: staff)
+
+    assert suspended_customer.status == :suspended
+    refute match?({:ok, %Customer{}}, sign_in(Customer, email))
+
+    assert {:ok, pending_customer} =
+             Ash.update(suspended_customer, %{}, action: :require_approval, actor: staff)
+
+    assert pending_customer.status == :needs_approval
+    assert is_nil(pending_customer.confirmed_at)
+  end
+
+  test "suspended customers cannot receive new orders" do
+    staff = create_staff!()
+
+    customer =
+      Customer
+      |> Ash.create!(
+        %{name: "Suspended Customer", customer_type: :retail},
+        action: :create_by_staff,
+        actor: staff
+      )
+      |> Ash.update!(%{}, action: :suspend, actor: staff)
+
+    assert {:error, error} =
+             Ash.create(Order, %{customer_id: customer.id}, actor: staff)
+
+    assert Exception.message(error) =~ "suspended customers cannot create new orders"
   end
 
   test "active staff can create password-less walk-in customers" do

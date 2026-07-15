@@ -26,6 +26,8 @@ defmodule Me.Accounts do
         post :create_by_staff, route: "/staff"
 
         patch :confirm, route: "/:id/confirm"
+        patch :require_approval, route: "/:id/require-approval"
+        patch :suspend, route: "/:id/suspend"
       end
     end
   end

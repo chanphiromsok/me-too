@@ -16,7 +16,7 @@ defmodule Me.Accounts.Customer do
   end
 
   actions do
-    defaults [:read, :update]
+    defaults [:read]
 
     read :api_index do
       pagination offset?: true, keyset?: true, default_limit: 25, max_page_size: 100
@@ -32,7 +32,7 @@ defmodule Me.Accounts.Customer do
       description "Get a customer by the subject claim in a JWT"
       argument :subject, :string, allow_nil?: false
       get? true
-      filter expr(not is_nil(confirmed_at))
+      filter expr(status == :approved and not is_nil(confirmed_at))
       prepare AshAuthentication.Preparations.FilterBySubject
     end
 
@@ -75,7 +75,7 @@ defmodule Me.Accounts.Customer do
       end
 
       # Only administrator-approved customers may sign in.
-      filter expr(not is_nil(confirmed_at))
+      filter expr(status == :approved and not is_nil(confirmed_at))
       prepare AshAuthentication.Strategy.Password.SignInPreparation
 
       metadata :token, :string do
@@ -131,9 +131,23 @@ defmodule Me.Accounts.Customer do
     end
 
     update :confirm do
-      description "Approve a customer account for password sign-in."
+      description "Approve a customer for orders and password sign-in."
       accept []
+      change set_attribute(:status, :approved)
       change set_attribute(:confirmed_at, &DateTime.utc_now/0)
+    end
+
+    update :require_approval do
+      description "Return a customer to the needs approval status."
+      accept []
+      change set_attribute(:status, :needs_approval)
+      change set_attribute(:confirmed_at, nil)
+    end
+
+    update :suspend do
+      description "Suspend a customer and prevent new orders or sign-in."
+      accept []
+      change set_attribute(:status, :suspended)
     end
   end
 
@@ -154,9 +168,10 @@ defmodule Me.Accounts.Customer do
       authorize_if actor_attribute_equals(:role, :staff)
     end
 
-    policy action(:confirm) do
+    policy action([:confirm, :require_approval, :suspend]) do
       forbid_unless actor_attribute_equals(:active, true)
       authorize_if actor_attribute_equals(:role, :admin)
+      authorize_if actor_attribute_equals(:role, :staff)
     end
 
     policy action([:register, :sign_in_with_password]) do
@@ -192,6 +207,13 @@ defmodule Me.Accounts.Customer do
       allow_nil? false
       constraints one_of: [:retail, :wholesale]
       default :retail
+      public? true
+    end
+
+    attribute :status, :atom do
+      allow_nil? false
+      constraints one_of: [:needs_approval, :approved, :suspended]
+      default :needs_approval
       public? true
     end
 

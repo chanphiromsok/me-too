@@ -21,7 +21,7 @@ defmodule MeWeb.JsonApiRouterTest do
     assert html_response(conn, 200) =~ "Swagger UI"
   end
 
-  test "customer registration stays pending until confirmed through the admin API", %{conn: conn} do
+  test "customer registration stays pending until confirmed through the staff API", %{conn: conn} do
     email = "pending-#{System.unique_integer([:positive])}@example.com"
 
     conn =
@@ -49,11 +49,11 @@ defmodule MeWeb.JsonApiRouterTest do
     refute get_in(body, ["meta", "token"])
     refute get_in(body, ["data", "meta", "token"])
 
-    admin = create_admin!()
+    staff = create_staff!()
 
     confirmation =
       build_conn()
-      |> put_req_header("authorization", "Bearer #{admin.__metadata__.token}")
+      |> put_req_header("authorization", "Bearer #{staff.__metadata__.token}")
       |> put_req_header("content-type", "application/vnd.api+json")
       |> patch(
         "/api/customers/#{body["data"]["id"]}/confirm",
@@ -68,12 +68,26 @@ defmodule MeWeb.JsonApiRouterTest do
       |> json_response(200)
 
     assert confirmation["data"]["attributes"]["confirmed_at"]
+    assert confirmation["data"]["attributes"]["status"] == "approved"
+
+    suspension =
+      patch_customer_status(staff, body["data"]["id"], "suspend")
+
+    assert suspension["data"]["attributes"]["status"] == "suspended"
+
+    review =
+      patch_customer_status(staff, body["data"]["id"], "require-approval")
+
+    assert review["data"]["attributes"]["status"] == "needs_approval"
+    assert review["data"]["attributes"]["confirmed_at"] == nil
   end
 
-  test "OpenAPI exposes the admin customer confirmation route", %{conn: conn} do
+  test "OpenAPI exposes staff customer status routes", %{conn: conn} do
     document = conn |> get("/api/open-api") |> response(200) |> Jason.decode!()
 
     assert document["paths"]["/api/customers/{id}/confirm"]["patch"]
+    assert document["paths"]["/api/customers/{id}/require-approval"]["patch"]
+    assert document["paths"]["/api/customers/{id}/suspend"]["patch"]
     assert document["paths"]["/api/staff/sign-in"]["post"]
     assert document["paths"]["/api/customers/sign-in"]["post"]
     assert document["paths"]["/api/customers/register"]["post"]
@@ -108,18 +122,35 @@ defmodule MeWeb.JsonApiRouterTest do
   end
 
   defp create_admin! do
+    create_staff!(:admin)
+  end
+
+  defp create_staff!(role \\ :staff) do
     Ash.create!(
       User,
       %{
-        name: "API Test Admin",
-        email: "admin-#{System.unique_integer([:positive])}@example.com",
-        role: :admin,
+        name: "API Test Staff",
+        email: "staff-#{System.unique_integer([:positive])}@example.com",
+        role: role,
         password: "password123",
         password_confirmation: "password123"
       },
       action: :register_with_password,
       authorize?: false
     )
+  end
+
+  defp patch_customer_status(staff, customer_id, action) do
+    build_conn()
+    |> put_req_header("authorization", "Bearer #{staff.__metadata__.token}")
+    |> put_req_header("content-type", "application/vnd.api+json")
+    |> patch(
+      "/api/customers/#{customer_id}/#{action}",
+      Jason.encode!(%{
+        data: %{id: customer_id, type: "customer", attributes: %{}}
+      })
+    )
+    |> json_response(200)
   end
 
   defp create_confirmed_customer! do
