@@ -25,7 +25,7 @@ defmodule Me.Sales.Payment do
     defaults [:read]
 
     create :record do
-      accept [:amount_cents, :method, :note, :external_reference]
+      accept [:amount_cents, :method, :note, :external_reference, :paid_at]
       argument :order_id, :uuid, allow_nil?: false
 
       change set_attribute(:order_id, arg(:order_id))
@@ -75,7 +75,13 @@ defmodule Me.Sales.Payment do
       public? true
     end
 
-    create_timestamp :recorded_at
+    attribute :paid_at, :utc_datetime_usec do
+      allow_nil? false
+      default &DateTime.utc_now/0
+      public? true
+    end
+
+    create_timestamp :recorded_at, public?: true
 
     attribute :voided_at, :utc_datetime_usec do
       public? true

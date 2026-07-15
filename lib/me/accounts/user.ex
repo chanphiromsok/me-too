@@ -148,6 +148,10 @@ defmodule Me.Accounts.User do
       forbid_unless actor_attribute_equals(:active, true)
       authorize_if actor_attribute_equals(:role, :admin)
     end
+
+    policy action(:read) do
+      authorize_if actor_present()
+    end
   end
 
   attributes do

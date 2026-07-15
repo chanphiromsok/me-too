@@ -289,11 +289,15 @@ defmodule MeWeb.SalesApiTest do
       |> post_json_api(
         "/api/orders/#{order.id}/payments",
         "payment",
-        payment_attributes
+        Map.put(payment_attributes, :paid_at, "2026-07-14T03:30:00.000000Z")
       )
       |> json_response(201)
 
     payment_id = payment["data"]["id"]
+    payment_details = payment["data"]["attributes"]
+
+    assert payment_details["paid_at"] == "2026-07-14T03:30:00.000000Z"
+    assert is_binary(payment_details["recorded_at"])
 
     retried_payment =
       staff

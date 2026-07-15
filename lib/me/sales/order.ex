@@ -8,7 +8,7 @@ defmodule Me.Sales.Order do
 
   json_api do
     type "order"
-    includes [:customer, :payments, line_items: [:product_variant]]
+    includes [:customer, payments: [:recorded_by], line_items: [:product_variant]]
 
     default_fields [
       :order_number,

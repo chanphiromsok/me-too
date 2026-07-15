@@ -86,6 +86,11 @@ defmodule MeWeb.ApiSurfaceTest do
     receipt_query =
       URI.encode_query(%{"include" => "customer,line_items.product_variant,payments"})
 
+    staff_receipt_query =
+      URI.encode_query(%{
+        "include" => "customer,line_items.product_variant,payments.recorded_by"
+      })
+
     receipt =
       fixture.customer
       |> api_conn()
@@ -96,15 +101,24 @@ defmodule MeWeb.ApiSurfaceTest do
     assert receipt["data"]["attributes"]["total_cents"] == 2_000
     assert Enum.any?(receipt["included"], &(&1["type"] == "order_line_item"))
     assert Enum.any?(receipt["included"], &(&1["type"] == "product_variant"))
-    assert Enum.any?(receipt["included"], &(&1["type"] == "payment"))
+
+    assert Enum.any?(receipt["included"], fn resource ->
+             resource["type"] == "payment" and
+               is_binary(resource["attributes"]["paid_at"]) and
+               is_binary(resource["attributes"]["recorded_at"])
+           end)
 
     staff_receipt =
       fixture.staff
       |> api_conn()
-      |> get("/api/orders/#{fixture.order.id}?#{receipt_query}")
+      |> get("/api/orders/#{fixture.order.id}?#{staff_receipt_query}")
       |> json_response(200)
 
     assert Enum.any?(staff_receipt["included"], &(&1["type"] == "customer"))
+
+    assert Enum.any?(staff_receipt["included"], fn resource ->
+             resource["type"] == "user" and resource["id"] == fixture.staff.id
+           end)
 
     customers =
       fixture.staff
