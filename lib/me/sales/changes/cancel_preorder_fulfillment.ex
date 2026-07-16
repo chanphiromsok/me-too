@@ -4,8 +4,6 @@ defmodule Me.Sales.Changes.CancelPreorderFulfillment do
   alias Me.Sales.Changes.ReleasePreorderStock
 
   @impl Ash.Resource.Change
-  def change(%{data: %{order_kind: :sale}} = changeset, _opts, _context), do: changeset
-
   def change(%{data: %{fulfillment_status: :ready}} = changeset, _opts, _context) do
     changeset
     |> Ash.Changeset.change_attribute(:fulfillment_status, :cancelled)

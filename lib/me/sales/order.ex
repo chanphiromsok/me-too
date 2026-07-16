@@ -172,8 +172,16 @@ defmodule Me.Sales.Order do
     update :cancel do
       accept [:cancel_reason]
       require_atomic? false
-      change Me.Sales.Changes.RestoreOrderStock
-      change Me.Sales.Changes.CancelPreorderFulfillment
+
+      change Me.Sales.Changes.RestoreOrderStock do
+        where attribute_equals(:order_kind, :sale)
+        where attribute_equals(:status, :pending)
+      end
+
+      change Me.Sales.Changes.CancelPreorderFulfillment do
+        where attribute_equals(:order_kind, :preorder)
+      end
+
       change transition_state(:cancelled)
       change set_attribute(:cancelled_at, &DateTime.utc_now/0)
     end
