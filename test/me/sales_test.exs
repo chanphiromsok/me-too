@@ -90,6 +90,27 @@ defmodule Me.SalesTest do
              Ash.update(fulfilled, %{}, action: :cancel, actor: customer)
   end
 
+  test "cancelling a draft sale order does not touch stock" do
+    customer = create_customer!()
+    staff = create_staff!()
+    variant = create_stocked_variant!(staff, 4, 2_000)
+    order = order_with_line!(customer, variant, 3)
+
+    assert order.status == :draft
+
+    cancelled =
+      Ash.update!(
+        order,
+        %{cancel_reason: "Customer changed their mind"},
+        action: :cancel,
+        actor: customer
+      )
+
+    assert cancelled.status == :cancelled
+    assert quantity(variant) == 4
+    assert movement_reasons(variant) == []
+  end
+
   test "returning a fulfilled order restores every item once" do
     staff = create_staff!()
     customer = create_customer!()
