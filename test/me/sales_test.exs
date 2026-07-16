@@ -58,6 +58,53 @@ defmodule Me.SalesTest do
     fulfilled = Ash.update!(submitted, %{}, action: :fulfill, actor: staff)
     assert fulfilled.status == :fulfilled
     assert %DateTime{} = fulfilled.fulfilled_at
+    assert quantity(variant) == 3
+    assert movement_reasons(variant) == [:restock, :sale]
+
+    sale_movement =
+      variant
+      |> movements_for_variant()
+      |> Enum.find(&(&1.reason == :sale))
+
+    assert sale_movement.reference_type == "order"
+    assert sale_movement.reference_id == order.id
+  end
+
+  test "adding, editing, and removing draft lines never touches stock" do
+    staff = create_staff!()
+    customer = create_customer!()
+    variant = create_stocked_variant!(staff, 5, 1_500)
+    order = Ash.create!(Order, %{}, actor: customer)
+
+    line =
+      Ash.create!(
+        OrderLineItem,
+        %{order_id: order.id, product_variant_id: variant.id, quantity: 2},
+        action: :add_line_item,
+        actor: customer
+      )
+
+    assert quantity(variant) == 5
+    assert movement_reasons(variant) == [:restock]
+
+    edited =
+      Ash.update!(
+        line,
+        %{order_id: order.id, quantity: 4},
+        action: :edit,
+        actor: customer
+      )
+
+    assert edited.quantity == 4
+    assert quantity(variant) == 5
+    assert movement_reasons(variant) == [:restock]
+
+    edited
+    |> Ash.Changeset.for_destroy(:remove, %{order_id: order.id}, actor: customer)
+    |> Ash.destroy!()
+
+    assert quantity(variant) == 5
+    assert movement_reasons(variant) == [:restock]
   end
 
   test "cancelling a pending order restores stock; fulfilled orders cannot cancel" do
@@ -108,7 +155,7 @@ defmodule Me.SalesTest do
 
     assert cancelled.status == :cancelled
     assert quantity(variant) == 4
-    assert movement_reasons(variant) == []
+    assert movement_reasons(variant) == [:restock]
   end
 
   test "returning a fulfilled order restores every item once" do
@@ -690,11 +737,16 @@ defmodule Me.SalesTest do
   end
 
   defp movement_reasons(variant) do
+    variant
+    |> movements_for_variant()
+    |> Enum.map(& &1.reason)
+    |> Enum.sort()
+  end
+
+  defp movements_for_variant(variant) do
     StockMovement
     |> Ash.read!(authorize?: false)
     |> Enum.filter(&(&1.product_variant_id == variant.id))
-    |> Enum.map(& &1.reason)
-    |> Enum.sort()
   end
 
   defp allocation_for_variant!(variant) do

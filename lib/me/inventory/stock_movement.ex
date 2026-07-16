@@ -145,10 +145,14 @@ defmodule Me.Inventory.StockMovement do
     end
 
     attribute :reference_type, :string do
+      allow_nil? false
+      default "manual_inventory_operation"
       public? true
     end
 
     attribute :reference_id, :uuid do
+      allow_nil? false
+      default &Ash.UUID.generate/0
       public? true
     end
 

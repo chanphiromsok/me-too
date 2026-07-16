@@ -16,6 +16,7 @@ defmodule Me.Sales.Changes.CommitOrderStock do
     lines =
       OrderLineItem
       |> Ash.Query.filter(order_id == ^changeset.data.id)
+      |> Ash.Query.sort(:product_variant_id)
       |> Ash.read!(authorize?: false)
 
     if lines == [] do

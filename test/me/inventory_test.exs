@@ -41,6 +41,27 @@ defmodule Me.InventoryTest do
     assert movement_sum(variant) == 0
   end
 
+  test "manual movements are referenced and archived inventory remains reconcilable" do
+    staff = create_staff!()
+    admin = create_staff!(role: :admin)
+    variant = create_variant!(staff)
+
+    first_restock = move_stock!(variant, staff, :restock, 2)
+    inactive_variant = Ash.update!(variant, %{active: false}, actor: staff)
+    adjustment = move_stock!(inactive_variant, staff, :adjust, 1, direction: :increase)
+
+    product = Ash.get!(Product, variant.product_id, authorize?: false)
+    _archived_product = Ash.update!(product, %{}, action: :archive, actor: admin)
+    second_restock = move_stock!(inactive_variant, staff, :restock, 1)
+
+    movements = [first_restock, adjustment, second_restock]
+
+    assert Enum.all?(movements, &(&1.reference_type == "manual_inventory_operation"))
+    assert movements |> Enum.map(& &1.reference_id) |> Enum.uniq() |> length() == 3
+    assert quantity(variant) == 4
+    assert movement_sum(variant) == quantity(variant)
+  end
+
   test "the ledger is staff-only and insert-only" do
     staff = create_staff!()
     customer = create_customer!()
@@ -101,12 +122,15 @@ defmodule Me.InventoryTest do
     )
   end
 
-  defp create_staff! do
+  defp create_staff!(opts \\ []) do
+    role = Keyword.get(opts, :role, :staff)
+
     Ash.create!(
       User,
       %{
         name: "Inventory Test Staff",
         email: unique_email("staff"),
+        role: role,
         password: @password,
         password_confirmation: @password
       },

@@ -121,6 +121,7 @@ defmodule Me.Sales.Order do
       argument :initial_payment_note, :string
       argument :initial_payment_external_reference, :string
 
+      change Me.Sales.Changes.LockOrderForUpdate
       change {Me.Sales.Changes.EnsureOrderKind, kind: :sale}
       change Me.Sales.Changes.CommitOrderStock
       change transition_state(:pending)
@@ -143,6 +144,7 @@ defmodule Me.Sales.Order do
       argument :initial_payment_note, :string
       argument :initial_payment_external_reference, :string
 
+      change Me.Sales.Changes.LockOrderForUpdate
       change {Me.Sales.Changes.EnsureOrderKind, kind: :preorder}
       change Me.Sales.Changes.EnsureOrderHasLineItems
       change transition_state(:pending)
@@ -154,6 +156,7 @@ defmodule Me.Sales.Order do
     update :allocate_preorder do
       accept []
       require_atomic? false
+      change Me.Sales.Changes.LockOrderForUpdate
       change {Me.Sales.Changes.EnsureOrderKind, kind: :preorder}
       change Me.Sales.Changes.ReservePreorderStock
       change set_attribute(:fulfillment_status, :ready)
@@ -162,6 +165,7 @@ defmodule Me.Sales.Order do
     update :fulfill do
       accept []
       require_atomic? false
+      change Me.Sales.Changes.LockOrderForUpdate
       change Me.Sales.Changes.EnsurePaymentReadyForFulfillment
       change Me.Sales.Changes.CommitPreorderFulfillment
       change transition_state(:fulfilled)
@@ -172,6 +176,8 @@ defmodule Me.Sales.Order do
     update :cancel do
       accept [:cancel_reason]
       require_atomic? false
+
+      change Me.Sales.Changes.LockOrderForUpdate
 
       change Me.Sales.Changes.RestoreOrderStock do
         where [attribute_equals(:order_kind, :sale), attribute_equals(:status, :pending)]
@@ -188,6 +194,7 @@ defmodule Me.Sales.Order do
     update :return do
       accept [:return_reason]
       require_atomic? false
+      change Me.Sales.Changes.LockOrderForUpdate
       change Me.Sales.Changes.RestockReturnedOrder
       change transition_state(:returned)
       change set_attribute(:returned_at, &DateTime.utc_now/0)

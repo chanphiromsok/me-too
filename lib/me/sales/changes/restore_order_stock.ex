@@ -12,6 +12,7 @@ defmodule Me.Sales.Changes.RestoreOrderStock do
     Ash.Changeset.before_action(changeset, fn changeset ->
       OrderLineItem
       |> Ash.Query.filter(order_id == ^changeset.data.id)
+      |> Ash.Query.sort(:product_variant_id)
       |> Ash.read!(authorize?: false)
       |> Enum.reduce_while(changeset, fn line, changeset ->
         movement_actor = if match?(%User{}, context.actor), do: context.actor
