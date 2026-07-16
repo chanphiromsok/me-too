@@ -174,8 +174,7 @@ defmodule Me.Sales.Order do
       require_atomic? false
 
       change Me.Sales.Changes.RestoreOrderStock do
-        where attribute_equals(:order_kind, :sale)
-        where attribute_equals(:status, :pending)
+        where [attribute_equals(:order_kind, :sale), attribute_equals(:status, :pending)]
       end
 
       change Me.Sales.Changes.CancelPreorderFulfillment do
